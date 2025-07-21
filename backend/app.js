@@ -5,8 +5,14 @@ const authRoutes = require('./routes/auth');
 const { auth, authorize } = require('./middleware/auth');
 const swaggerUi = require('swagger-ui-express');
 const swaggerSpec = require('./docs/swagger');
+const cors = require('cors');
 
 const app = express();
+
+app.use(cors({
+  origin: 'http://localhost:3000', // Your frontend URL
+  credentials: true // If you're using cookies/sessions
+}));
 
 // Middleware
 app.use(express.json());
@@ -30,9 +36,9 @@ app.get('/api/applicant-only', auth, authorize('applicant'), (req, res) => {
 });
 
 app.get('/api/protected', auth, (req, res) => {
-  res.json({ 
-    message: 'This is a protected endpoint', 
-    user: req.user.toJSON() 
+  res.json({
+    message: 'This is a protected endpoint',
+    user: req.user.toJSON()
   });
 });
 
@@ -45,6 +51,6 @@ app.use('/api/letters', letterRoutes);
 
 
 const templateRoutes = require('./routes/template');
-app.use('/api/templates', templateRoutes); 
+app.use('/api/templates', templateRoutes);
 
 module.exports = app;
