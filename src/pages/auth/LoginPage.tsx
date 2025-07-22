@@ -16,11 +16,12 @@ const LoginPage: React.FC = () => {
             });
             console.log(email, password);
 
-            if (!response.ok) {
-                throw new Error('Login failed');
-            }
-
             const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.message || 'Login failed');
+            }
+            console.log(data);
 
             localStorage.setItem('token', data.token);
             localStorage.setItem('user', JSON.stringify(data.user));

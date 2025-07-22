@@ -153,4 +153,10 @@ router.post('/logout', auth, (req, res) => {
   res.json({ message: 'Logged out successfully' });
 });
 
+// Get available roles
+router.get('/roles', (req, res) => {
+  const availableRoles = User.rawAttributes.role.values;
+  res.json(availableRoles);
+});
+
 module.exports = router;
