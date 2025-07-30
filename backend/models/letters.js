@@ -30,10 +30,10 @@
  *           type: integer
  *         status:
  *           type: string
- *         createdAt:
+ *         created_at:
  *           type: string
  *           format: date-time
- *         updatedAt:
+ *         updated_at:
  *           type: string
  *           format: date-time
  */
@@ -44,49 +44,71 @@ module.exports = (sequelize, DataTypes) => {
             defaultValue: DataTypes.UUIDV4,
             primaryKey: true
         },
+
         referee_id: {
             type: DataTypes.UUID,
-            allowNull: true
+            allowNull: true,
+            references: {
+                model: 'Users',
+                key: 'id'
+            }
         },
+
         applicant_data: {
             type: DataTypes.JSONB,
             allowNull: false
         },
+
         letter_content: {
-            type: DataTypes.TEXT
+            type: DataTypes.TEXT,
+            allowNull: true
         },
+
         current_version_id: {
-            type: DataTypes.UUID
+            type: DataTypes.UUID,
+            allowNull: true
         },
+
         template_id: {
-            type: DataTypes.UUID
+            type: DataTypes.UUID,
+            allowNull: true,
+            references: {
+                model: 'Templates',
+                key: 'id'
+            }
         },
+
         generation_parameters: {
-            type: DataTypes.JSONB
+            type: DataTypes.JSONB,
+            allowNull: true
         },
+
         model_used: {
-            type: DataTypes.STRING(50)
+            type: DataTypes.STRING(50),
+            allowNull: true
         },
+
         generation_attempts: {
             type: DataTypes.INTEGER,
             defaultValue: 1
         },
+
         status: {
             type: DataTypes.STRING(20),
             defaultValue: 'draft'
-        },
-        createdAt: {
-            type: DataTypes.DATE,
-            defaultValue: sequelize.literal('NOW()')
-        },
-        updatedAt: {
-            type: DataTypes.DATE,
-            defaultValue: sequelize.literal('NOW()')
         }
+
     }, {
         tableName: 'letters',
-        timestamps: false
+        timestamps: true,
+        underscored: true // created_at, updated_at
     });
+
+    // Define associations
+    Letter.associate = (models) => {
+        Letter.belongsTo(models.User, { foreignKey: 'referee_id', as: 'referee' });
+        Letter.belongsTo(models.Template, { foreignKey: 'template_id', as: 'template' });
+    };
 
     return Letter;
 };

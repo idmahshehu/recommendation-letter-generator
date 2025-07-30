@@ -1,9 +1,13 @@
 const express = require('express');
-const { Letter } = require('../models');
+const db = require('../models');
 const { auth, authorize: roleAuth } = require('../middleware/auth');
 const router = express.Router();
-
-
+const { generateLetterGemini } = require('../utils/gemini');
+const { generateWithOllama } = require('../utils/ollama');
+const { json } = require('sequelize');
+const Letter = db.Letter;
+const User = db.User;
+const Template = db.Template;
 /**
  * @swagger
  * /api/letters:
@@ -86,12 +90,209 @@ router.get('/:id', auth, async (req, res) => {
  *         description: List of letters
  */
 // READ ALL /api/letters
+// router.get('/', auth, async (req, res) => {
+//   const letters = await Letter.findAll({
+//     where: { referee_id: req.user.id }
+//   });
+//   res.json(letters);
+// });
+
 router.get('/', auth, async (req, res) => {
-  const letters = await Letter.findAll({
-    where: { referee_id: req.user.id }
-  });
-  res.json(letters);
+  try {
+    const { page = 1, limit = 10, status } = req.query;
+    const offset = (page - 1) * limit;
+
+    const whereClause = {};
+
+    if (req.user.role === 'referee') {
+      whereClause.referee_id = req.user.id;
+    } else {
+      whereClause[Op.and] = [
+        Sequelize.where(Sequelize.json('applicant_data.email'), req.user.email)
+      ];
+    }
+
+    if (status) {
+      whereClause.status = status;
+    }
+
+    const letters = await Letter.findAndCountAll({
+      where: whereClause,
+      include: [
+        {
+          model: Template,
+          as: 'template', // <-- required alias
+          attributes: ['id', 'name', 'description']
+        },
+        {
+          model: User,
+          as: 'referee',
+          attributes: ['id', 'firstName', 'lastName', 'email', 'institution']
+        }
+      ],
+      order: [['createdAt', 'DESC']],
+      limit: parseInt(limit),
+      offset: offset
+    });
+
+    res.json({
+      letters: letters.rows,
+      pagination: {
+        total: letters.count,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        totalPages: Math.ceil(letters.count / limit)
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching letters:', error);
+    res.status(500).json({ error: 'Failed to fetch letters' });
+  }
 });
+
+
+
+/**
+ * @swagger
+ * /api/letters/generate:
+ *   post:
+ *     summary: Generate a new recommendation letter using AI (Gemini)
+ *     tags: [Letters]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               template_id:
+ *                 type: string
+ *                 format: uuid
+ *                 example: "6c77d478-5916-4e2e-bc3e-c963f8f27a0a"
+ *               applicant_data:
+ *                 type: object
+ *                 example:
+ *                   firstName: Jane
+ *                   lastName: Doe
+ *                   email: jane.doe@example.com
+ *                   program: MSc Computer Science
+ *               generation_parameters:
+ *                 type: object
+ *                 required: false
+ *                 example:
+ *                   tone: formal
+ *                   length: standard
+ *                   detailLevel: detailed
+ *     responses:
+ *       201:
+ *         description: Letter generated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Letter'
+ *       404:
+ *         description: Template or referee not found
+ *       500:
+ *         description: Failed to generate letter
+ */
+
+// POST /api/letters/generate
+router.post('/generate', auth, async (req, res) => {
+  try {
+    const { applicant_data, template_id, generation_parameters } = req.body;
+
+    // 1. Get Template
+    const template = await Template.findByPk(template_id);
+    if (!template) {
+      return res.status(404).json({ error: 'Template not found' });
+    }
+
+    // 2. Get Referee Info
+    const referee = await User.findByPk(req.user.id, {
+      attributes: ['firstName', 'lastName', 'email', 'institution', 'department', 'title']
+    });
+    console.log('Referee:', referee);
+
+    if (!referee) {
+      return res.status(404).json({ error: 'Referee not found' });
+    }
+
+    // 3. Build the Prompt  ${referee.title},  ${referee.institution}, ${referee.department}
+    const prompt = `You are writing a ${template.category} short 100 words recommendation letter.
+    Referee Info: ${referee.firstName} ${referee.lastName}
+    Applicant Info: ${JSON.stringify(applicant_data, null, 2)}
+
+    Template: ${template.promptTemplate}
+
+    Instructions: Please write a personalized letter based on this data.
+    ${generation_parameters?.tone ? `Tone: ${generation_parameters.tone}` : ''}
+    ${generation_parameters?.length ? `Length: ${generation_parameters.length}` : ''}
+    ${generation_parameters?.detailLevel ? `Detail Level: ${generation_parameters.detailLevel}` : ''}`;
+
+    // 4. Generate Letter with Ollama only
+    let generatedText;
+    let modelUsed = 'ollama-llama2';
+
+    try {
+      generatedText = await generateWithOllama(prompt);
+    } catch (generationError) {
+      console.error('Ollama Generation Error:', generationError.message);
+      return res.status(500).json({ error: 'Failed to generate letter with Ollama.' });
+    }
+
+    // 5. Save the Letter
+    const letter = await Letter.create({
+      referee_id: req.user.id,
+      applicant_data,
+      template_id,
+      generation_parameters,
+      letter_content: generatedText,
+      model_used: modelUsed,
+      generation_attempts: 1,
+      status: 'draft'
+    });
+    //  // 4. Generate Letter using selected model
+    // let generatedText;
+    // let modelUsed = 'ollama-llama2';
+
+    // try {
+    //   if (model === 'gemini-pro') {
+    //     generatedText = await generateLetterGemini(prompt);
+    //     modelUsed = 'gemini-pro';
+    //   } else {
+    //     // default: ollama
+    //     generatedText = await generateWithOllama(prompt);
+    //   }
+    // } catch (generationError) {
+    //   console.error('AI Generation Error:', generationError.message);
+    //   return res.status(500).json({ error: 'Failed to generate letter with selected model.' });
+    // }
+
+    // // 5. Save the Letter
+    // const letter = await Letter.create({
+    //   referee_id: req.user.id,
+    //   applicant_data,
+    //   template_id,
+    //   generation_parameters,
+    //   letter_content: generatedText,
+    //   model_used: modelUsed,
+    //   generation_attempts: 1,
+    //   status: 'draft'
+    // });
+
+    res.status(201).json(letter);
+
+  } catch (err) {
+    if (err.response?.status === 429) {
+      return res.status(429).json({ error: 'Rate limit reached. Please wait before trying again.' });
+    }
+    console.error('Error generating letter:', err.message);
+    res.status(500).json({ error: 'Failed to generate letter' });
+  }
+});
+
 
 // UPDATE
 // router.put('/:id', auth, async (req, res) => {
@@ -154,28 +355,28 @@ router.delete('/:id', auth, async (req, res) => {
 });
 
 // POST /api/letters/generate
-// router.post('/generate', auth, roleAuth('referee'), async (req, res) => {
-//   try {
-//     const { letterId, prompt } = req.body;
+router.post('/generate', auth, roleAuth('referee'), async (req, res) => {
+  try {
+    const { letterId, prompt } = req.body;
 
-//     // mock OpenAI generation (replace later)
-//     const generatedText = `Generated letter using prompt: ${prompt}`;
+    // mock OpenAI generation (replace later)
+    const generatedText = `Generated letter using prompt: ${prompt}`;
 
-//     const letter = await Letter.findByPk(letterId);
-//     if (!letter) return res.status(404).json({ error: 'Letter not found' });
+    const letter = await Letter.findByPk(letterId);
+    if (!letter) return res.status(404).json({ error: 'Letter not found' });
 
-//     await letter.update({
-//       letter_content: generatedText,
-//       model_used: 'gpt-4',
-//       status: 'generated',
-//       generation_attempts: letter.generation_attempts + 1
-//     });
+    await letter.update({
+      letter_content: generatedText,
+      model_used: 'gpt-4',
+      status: 'generated',
+      generation_attempts: letter.generation_attempts + 1
+    });
 
-//     res.json(letter);
-//   } catch (err) {
-//     res.status(500).json({ error: err.message });
-//   }
-// });
+    res.json(letter);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 module.exports = router;
 

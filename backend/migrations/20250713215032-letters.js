@@ -52,11 +52,11 @@ module.exports = {
         type: Sequelize.STRING(20),
         defaultValue: 'draft'
       },
-      createdAt: {
+      created_at: {
         type: Sequelize.DATE,
         defaultValue: Sequelize.literal('NOW()')
       },
-      updatedAt: {
+      updated_at: {
         type: Sequelize.DATE,
         defaultValue: Sequelize.literal('NOW()')
       }

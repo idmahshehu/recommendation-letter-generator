@@ -5,6 +5,7 @@ import { LoginPage, RegisterPage } from '../pages/auth';
 import { DashboardPage } from '../pages/dashboard';
 import { LettersPage } from '../pages/letters';
 import ProtectedRoute from './ProtectedRoute';
+import LetterForm from '../components/letters/LetterForm';
 
 function AppRoutes() {
   return (
@@ -20,6 +21,7 @@ function AppRoutes() {
         }
       />
       <Route path="/letters" element={<LettersPage />} />
+      <Route path="/letters/generate" element={<LetterForm />} />
     </Routes>
   );
 }
