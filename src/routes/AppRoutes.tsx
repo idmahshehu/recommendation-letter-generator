@@ -6,6 +6,8 @@ import { DashboardPage } from '../pages/dashboard';
 import { LettersPage } from '../pages/letters';
 import ProtectedRoute from './ProtectedRoute';
 import LetterForm from '../components/letters/LetterForm';
+import GenerateLetter from '../pages/letters/GenerateLetter';
+import EditLetterPage from '../pages/letters/EditLetterPage';
 
 function AppRoutes() {
   return (
@@ -21,7 +23,8 @@ function AppRoutes() {
         }
       />
       <Route path="/letters" element={<LettersPage />} />
-      <Route path="/letters/generate" element={<LetterForm />} />
+      <Route path="/letters/:id/generate" element={<GenerateLetter />} />
+      <Route path="/letters/:id/edit" element={<EditLetterPage />} />
     </Routes>
   );
 }

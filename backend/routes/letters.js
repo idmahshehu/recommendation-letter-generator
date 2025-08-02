@@ -5,34 +5,14 @@ const router = express.Router();
 const { generateLetterGemini } = require('../utils/gemini');
 const { generateWithOllama } = require('../utils/ollama');
 const { json } = require('sequelize');
+const { Op, Sequelize } = require('sequelize');
 const Letter = db.Letter;
 const User = db.User;
 const Template = db.Template;
-/**
- * @swagger
- * /api/letters:
- *   post:
- *     summary: Create a new letter (referee only)
- *     tags: [Letters]
- *     responses:
- *       201:
- *         description: Letter created
- */
 
-// CREATE
-router.post('/', auth, async (req, res) => {
-  try {
-    const letter = await Letter.create({
-      referee_id: req.user.id,
-      applicant_data: req.body.applicant_data,
-      template_id: req.body.template_id,
-      generation_parameters: req.body.generation_parameters
-    });
-    res.status(201).json(letter);
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-});
+// ==========================================
+// APPLICANT FLOW - Step 1: Request Letter
+// ==========================================
 
 /**
  * @swagger
@@ -40,20 +20,653 @@ router.post('/', auth, async (req, res) => {
  *   post:
  *     summary: Request a recommendation letter (applicant only)
  *     tags: [Letters]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               referee_id:
+ *                 type: string
+ *                 format: uuid
+ *                 example: "266d8b9d-e939-440b-85b9-be40f0315b13"
+ *               applicant_data:
+ *                 type: object
+ *                 properties:
+ *                   firstName:
+ *                     type: string
+ *                     example: "Jane"
+ *                   lastName:
+ *                     type: string
+ *                     example: "Doe"
+ *                   email:
+ *                     type: string
+ *                     example: "jane.doe@example.com"
+ *                   program:
+ *                     type: string
+ *                     example: "MSc in Computer Science"
+ *                   goal:
+ *                     type: string
+ *                     example: "Apply to graduate school"
+ *                   achievements:
+ *                     type: array
+ *                     items:
+ *                       type: string
+ *                     example: ["Top 10% of class", "Led research project on AI"]
+ *               preferences:
+ *                 type: object
+ *                 properties:
+ *                   tone:
+ *                     type: string
+ *                     enum: ["formal", "casual", "academic"]
+ *                     example: "formal"
+ *                   length:
+ *                     type: string
+ *                     enum: ["short", "standard", "detailed"]
+ *                     example: "standard"
+ *                   deadline:
+ *                     type: string
+ *                     format: date
+ *                     example: "2024-03-15"
  *     responses:
  *       201:
- *         description: Letter request created
+ *         description: Letter request created successfully
+ *       400:
+ *         description: Bad request
+ *       404:
+ *         description: Referee not found
  */
 router.post('/request', auth, roleAuth('applicant'), async (req, res) => {
   try {
-    const letter = await Letter.create({
-      applicant_data: req.body.applicant_data,
-      referee_id: req.body.referee_id, // Optional: You can assign or leave null
-      status: 'requested'
+    const { referee_id, applicant_data, preferences = {} } = req.body;
+
+    // Validate referee exists
+    const referee = await User.findOne({
+      where: { id: referee_id, role: 'referee' }
     });
-    res.status(201).json(letter);
+
+    if (!referee) {
+      return res.status(404).json({ error: 'Referee not found' });
+    }
+
+    // Create letter request
+    const letter = await Letter.create({
+      referee_id,
+      applicant_data: {
+        ...applicant_data,
+        requester_id: req.user.id // Link to the requesting user
+      },
+      generation_parameters: preferences,
+      status: 'requested' // Key: starts as 'requested'
+    });
+
+    res.status(201).json({
+      message: 'Letter request sent successfully',
+      letter: {
+        id: letter.id,
+        status: letter.status,
+        referee: {
+          name: `${referee.firstName} ${referee.lastName}`,
+          email: referee.email
+        },
+        requested_at: letter.requested_at
+      }
+    });
   } catch (err) {
+    console.error('Error creating letter request:', err);
     res.status(400).json({ error: err.message });
+  }
+});
+
+// ==========================================
+// REFEREE FLOW - Step 2: View Pending Requests
+// ==========================================
+
+/**
+ * @swagger
+ * /api/letters/pending:
+ *   get:
+ *     summary: Get pending letter requests for referee
+ *     tags: [Letters]
+ *     responses:
+ *       200:
+ *         description: List of pending requests
+ */
+router.get('/pending', auth, roleAuth('referee'), async (req, res) => {
+  try {
+    const pendingLetters = await Letter.findAll({
+      where: {
+        referee_id: req.user.id,
+        status: 'requested'
+      },
+      include: [
+        {
+          model: Template,
+          as: 'template',
+          attributes: ['id', 'name', 'description'],
+          required: false
+        }
+      ],
+      order: [['created_at', 'ASC']] // Oldest requests first
+    });
+
+    res.json({
+      pending_requests: pendingLetters.map(letter => ({
+        id: letter.id,
+        applicant: {
+          name: `${letter.applicant_data.firstName} ${letter.applicant_data.lastName}`,
+          email: letter.applicant_data.email,
+          program: letter.applicant_data.program,
+          goal: letter.applicant_data.goal,
+          achievements: letter.applicant_data.achievements
+        },
+        preferences: letter.generation_parameters,
+        created_at: letter.created_at,
+        deadline: letter.generation_parameters?.deadline
+      }))
+    });
+  } catch (error) {
+    console.error('Error fetching pending requests:', error);
+    res.status(500).json({ error: 'Failed to fetch pending requests' });
+  }
+});
+
+// ==========================================
+// REFEREE FLOW - Step 3: Generate Draft
+// ==========================================
+
+/**
+ * @swagger
+ * /api/letters/{id}/generate-draft:
+ *   post:
+ *     summary: Generate AI draft for a letter request (referee only)
+ *     tags: [Letters]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               template_id:
+ *                 type: string
+ *                 format: uuid
+ *               extra_context:
+ *                 type: object
+ *                 properties:
+ *                   relationship:
+ *                     type: string
+ *                     example: "student in my Advanced AI course"
+ *                   duration:
+ *                     type: string
+ *                     example: "2 years"
+ *                   strengths:
+ *                     type: string
+ *                     example: "exceptional analytical thinking and leadership"
+ *                   specific_examples:
+ *                     type: string
+ *                     example: "Led a team project that achieved 95% accuracy"
+ *     responses:
+ *       200:
+ *         description: Draft generated successfully
+ *       404:
+ *         description: Letter request not found
+ *       403:
+ *         description: Not authorized to generate draft for this letter
+ */
+router.post('/:id/generate-draft', auth, roleAuth('referee'), async (req, res) => {
+  try {
+    const { template_id, extra_context = {} } = req.body;
+
+    // Find the letter request
+    const letter = await Letter.findOne({
+      where: {
+        id: req.params.id,
+        referee_id: req.user.id,
+        status: 'requested'
+      }
+    });
+
+    if (!letter) {
+      return res.status(404).json({ error: 'Letter request not found or already processed' });
+    }
+
+    // Get template
+    const template = await Template.findByPk(template_id);
+    if (!template) {
+      return res.status(404).json({ error: 'Template not found' });
+    }
+
+    // Get referee info
+    const referee = await User.findByPk(req.user.id, {
+      attributes: ['firstName', 'lastName', 'email', 'institution', 'department', 'title']
+    });
+
+    // Build context for AI generation
+    const applicantName = `${letter.applicant_data.firstName} ${letter.applicant_data.lastName}`;
+
+    const values = {
+      applicantName,
+      position: letter.applicant_data.program,
+      relationship: extra_context.relationship || 'student',
+      duration: extra_context.duration || '1 year',
+      strengths: extra_context.strengths || letter.applicant_data.achievements?.join(', ') || 'dedication and curiosity',
+      examples: extra_context.specific_examples || '',
+      additionalContext: extra_context.additional_context || '',
+      tone: letter.generation_parameters?.tone || 'formal',
+      length: letter.generation_parameters?.length || 'standard',
+      detailLevel: letter.generation_parameters?.detailLevel || 'comprehensive',
+
+      // Referee info
+      refereeName: `${referee.firstName} ${referee.lastName}`,
+      refereeEmail: referee.email || '',
+      refereeInstitution: referee.institution || 'our institution',
+      refereeDepartment: referee.department || 'the department',
+      refereeTitle: referee.title || 'Professor'
+    };
+
+    // Fill template and create prompt
+    const filledTemplate = fillTemplate(template.promptTemplate, values);
+    const prompt = `You are writing a ${template.category} recommendation letter.
+Referee Info: ${referee.firstName} ${referee.lastName}, ${referee.title} at ${referee.institution}
+Applicant Info: ${JSON.stringify(letter.applicant_data, null, 2)}
+Additional Context: ${JSON.stringify(extra_context, null, 2)}
+
+${filledTemplate}`;
+
+    // ✅ Log for debugging
+    console.log('Template ID:', template_id);
+    console.log('Extra context:', extra_context);
+    console.log('Letter:', letter);
+    console.log('Prompt preview:\n', prompt);
+
+    // Generate draft with AI
+    let generatedText;
+    try {
+      console.log('Generating with Ollama...');
+      generatedText = await generateWithOllama(prompt);
+      console.log('Generated text:', generatedText);
+    } catch (generationError) {
+      console.error('Ollama Generation Error:', generationError.message);
+      return res.status(500).json({ error: 'Failed to generate letter with Ollama.' });
+    }
+
+    // Only update if generation was successful
+    if (!generatedText) {
+      return res.status(500).json({ error: 'No content generated from AI' });
+    }
+
+    // Update letter with draft content
+    await letter.update({
+      template_id,
+      letter_content: generatedText,
+      model_used: 'ollama-llama2',
+      status: 'draft',
+      generation_attempts: (letter.generation_attempts || 0) + 1,
+      generation_parameters: {
+        ...letter.generation_parameters,
+        extra_context
+      }
+    });
+
+    res.json({
+      message: 'Draft generated successfully',
+      letter: {
+        id: letter.id,
+        content: generatedText,
+        status: 'draft',
+        applicant: {
+          name: applicantName,
+          program: letter.applicant_data.program
+        },
+        generated_at: letter.updated_at
+      }
+    });
+  } catch (err) {
+    console.error('Error generating draft:', err);
+    res.status(500).json({ error: 'Failed to generate draft' });
+  }
+});
+
+// ==========================================
+// REFEREE FLOW - Edit and Finalize
+// ==========================================
+
+/**
+ * @swagger
+ * /api/letters/{id}/edit:
+ *   put:
+ *     summary: Edit letter content (referee only)
+ *     tags: [Letters]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: ID of the letter to edit
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - letter_content
+ *             properties:
+ *               letter_content:
+ *                 type: string
+ *                 description: Full letter content (modify only what you want to change)
+ *                 example: |
+ *                   Dear Admissions Committee,
+ *                   
+ *                   I am writing to wholeheartedly recommend JUNA Doe for admission into your esteemed MSc in Computer Science program.
+ *                   
+ *                   ...
+ *                   
+ *                   Sincerely,
+ *                   
+ *                   [Your Name]
+ *     responses:
+ *       200:
+ *         description: Letter updated successfully
+ *       404:
+ *         description: Letter not found or cannot be edited
+ *       500:
+ *         description: Server error
+ */
+
+router.put('/:id/edit', auth, roleAuth('referee'), async (req, res) => {
+  try {
+    const { letter_content } = req.body;
+
+    const letter = await Letter.findOne({
+      where: {
+        id: req.params.id,
+        referee_id: req.user.id,
+        status: ['draft', 'in_review']
+      }
+    });
+
+    if (!letter) {
+      return res.status(404).json({ error: 'Letter not found or cannot be edited' });
+    }
+
+    await letter.update({
+      letter_content,
+      status: 'in_review'
+    });
+
+    res.json({
+      message: 'Letter updated successfully',
+      letter: {
+        id: letter.id,
+        content: letter.letter_content,
+        status: letter.status,
+        last_edited_at: letter.updated_at
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * @swagger
+ * /api/letters/{id}/approve:
+ *   post:
+ *     summary: Approve and finalize letter (referee only)
+ *     tags: [Letters]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: ID of the letter to approve
+ *     responses:
+ *       200:
+ *         description: Letter approved and completed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Letter approved and completed
+ *                 letter:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                     status:
+ *                       type: string
+ *                       example: completed
+ *                     completed_at:
+ *                       type: string
+ *                       format: date-time
+ *       404:
+ *         description: Letter not found or cannot be approved
+ *       500:
+ *         description: Server error
+ */
+
+router.post('/:id/approve', auth, roleAuth('referee'), async (req, res) => {
+  try {
+    const letter = await Letter.findOne({
+      where: {
+        id: req.params.id,
+        referee_id: req.user.id,
+        status: ['draft', 'in_review']
+      }
+    });
+
+    if (!letter) {
+      return res.status(404).json({ error: 'Letter not found or cannot be approved' });
+    }
+
+    await letter.update({
+      status: 'completed'
+    });
+
+    // Here you might want to notify the applicant
+    // await notifyApplicant(letter);
+
+    res.json({
+      message: 'Letter approved and completed',
+      letter: {
+        id: letter.id,
+        status: letter.status,
+        completed_at: letter.updated_at
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ==========================================
+// SHARED ROUTES - View Letters
+// ==========================================
+
+/**
+ * @swagger
+ * /api/letters:
+ *   get:
+ *     summary: Get all letters (filtered by user role, paginated)
+ *     tags: [Letters]
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Page number for pagination
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *         description: Number of letters per page
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [requested, draft, in_review, completed]
+ *         description: Optional filter by letter status
+ *     responses:
+ *       200:
+ *         description: List of letters
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 letters:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: string
+ *                       status:
+ *                         type: string
+ *                       applicant:
+ *                         type: object
+ *                         properties:
+ *                           name:
+ *                             type: string
+ *                           program:
+ *                             type: string
+ *                       referee:
+ *                         type: object
+ *                         nullable: true
+ *                         properties:
+ *                           name:
+ *                             type: string
+ *                           institution:
+ *                             type: string
+ *                       template:
+ *                         type: object
+ *                         nullable: true
+ *                         properties:
+ *                           id:
+ *                             type: string
+ *                           name:
+ *                             type: string
+ *                           description:
+ *                             type: string
+ *                       content:
+ *                         type: string
+ *                         nullable: true
+ *                       created_at:
+ *                         type: string
+ *                         format: date-time
+ *                       completed_at:
+ *                         type: string
+ *                         format: date-time
+ *                         nullable: true
+ *                 pagination:
+ *                   type: object
+ *                   properties:
+ *                     total:
+ *                       type: integer
+ *                     page:
+ *                       type: integer
+ *                     limit:
+ *                       type: integer
+ *                     totalPages:
+ *                       type: integer
+ *       500:
+ *         description: Server error
+ */
+
+router.get('/', auth, async (req, res) => {
+  try {
+    const { page = 1, limit = 10, status } = req.query;
+    const offset = (page - 1) * limit;
+
+    const whereClause = {};
+
+    // Filter based on user role
+    if (req.user.role === 'referee') {
+      whereClause.referee_id = req.user.id;
+    } else if (req.user.role === 'applicant') {
+      // Applicants see letters they requested
+      whereClause[Op.and] = [
+        Sequelize.where(
+          Sequelize.json('applicant_data.requester_id'),
+          req.user.id
+        )
+      ];
+    }
+
+    if (status) {
+      const statusList = status.split(',');
+      whereClause.status = {
+        [Op.in]: statusList
+      };
+    }
+
+    const letters = await Letter.findAndCountAll({
+      where: whereClause,
+      include: [
+        {
+          model: Template,
+          as: 'template',
+          attributes: ['id', 'name', 'description'],
+          required: false
+        },
+        {
+          model: User,
+          as: 'referee',
+          attributes: ['id', 'firstName', 'lastName', 'email', 'institution']
+        }
+      ],
+      order: [['createdAt', 'DESC']],
+      limit: parseInt(limit),
+      offset: offset
+    });
+
+    res.json({
+      letters: letters.rows.map(letter => ({
+        id: letter.id,
+        status: letter.status,
+        applicant: {
+          name: `${letter.applicant_data.firstName} ${letter.applicant_data.lastName}`,
+          program: letter.applicant_data.program
+        },
+        referee: letter.referee ? {
+          name: `${letter.referee.firstName} ${letter.referee.lastName}`,
+          institution: letter.referee.institution
+        } : null,
+        template: letter.template,
+        created_at: letter.created_at,
+        completed_at: letter.status === 'completed' ? letter.updated_at : null,
+        // Only show content to referee or if completed
+        content: (req.user.role === 'referee' || letter.status === 'completed') ?
+          letter.letter_content : null
+      })),
+      pagination: {
+        total: letters.count,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        totalPages: Math.ceil(letters.count / limit)
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching letters:', error);
+    res.status(500).json({ error: 'Failed to fetch letters' });
   }
 });
 
@@ -69,896 +682,129 @@ router.post('/request', auth, roleAuth('applicant'), async (req, res) => {
  *         required: true
  *         schema:
  *           type: string
+ *           format: uuid
+ *         description: The ID of the letter to retrieve
  *     responses:
  *       200:
- *         description: Letter details
- */
-// READ ONE /api/letters
-router.get('/:id', auth, async (req, res) => {
-  const letter = await Letter.findByPk(req.params.id);
-  if (!letter) return res.status(404).json({ error: 'Letter not found' });
-  res.json(letter);
-});
-/**
- * @swagger
- * /api/letters:
- *   get:
- *     summary: Get all letters for the authenticated referee
- *     tags: [Letters]
- *     responses:
- *       200:
- *         description: List of letters
- */
-// READ ALL /api/letters
-// router.get('/', auth, async (req, res) => {
-//   const letters = await Letter.findAll({
-//     where: { referee_id: req.user.id }
-//   });
-//   res.json(letters);
-// });
-
-router.get('/', auth, async (req, res) => {
-  try {
-    const { page = 1, limit = 10, status } = req.query;
-    const offset = (page - 1) * limit;
-
-    const whereClause = {};
-
-    if (req.user.role === 'referee') {
-      whereClause.referee_id = req.user.id;
-    } else {
-      whereClause[Op.and] = [
-        Sequelize.where(Sequelize.json('applicant_data.email'), req.user.email)
-      ];
-    }
-
-    if (status) {
-      whereClause.status = status;
-    }
-
-    const letters = await Letter.findAndCountAll({
-      where: whereClause,
-      include: [
-        {
-          model: Template,
-          as: 'template', // <-- required alias
-          attributes: ['id', 'name', 'description']
-        },
-        {
-          model: User,
-          as: 'referee',
-          attributes: ['id', 'firstName', 'lastName', 'email', 'institution']
-        }
-      ],
-      order: [['createdAt', 'DESC']],
-      limit: parseInt(limit),
-      offset: offset
-    });
-
-    res.json({
-      letters: letters.rows,
-      pagination: {
-        total: letters.count,
-        page: parseInt(page),
-        limit: parseInt(limit),
-        totalPages: Math.ceil(letters.count / limit)
-      }
-    });
-  } catch (error) {
-    console.error('Error fetching letters:', error);
-    res.status(500).json({ error: 'Failed to fetch letters' });
-  }
-});
-
-
-
-/**
- * @swagger
- * /api/letters/generate:
- *   post:
- *     summary: Generate a new recommendation letter using AI (Gemini)
- *     tags: [Letters]
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               template_id:
- *                 type: string
- *                 format: uuid
- *                 example: "6c77d478-5916-4e2e-bc3e-c963f8f27a0a"
- *               applicant_data:
- *                 type: object
- *                 example:
- *                   firstName: Jane
- *                   lastName: Doe
- *                   email: jane.doe@example.com
- *                   program: MSc Computer Science
- *               generation_parameters:
- *                 type: object
- *                 required: false
- *                 example:
- *                   tone: formal
- *                   length: standard
- *                   detailLevel: detailed
- *     responses:
- *       201:
- *         description: Letter generated successfully
+ *         description: Letter retrieved successfully
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/Letter'
+ *               type: object
+ *               properties:
+ *                 id:
+ *                   type: string
+ *                 status:
+ *                   type: string
+ *                 applicant_data:
+ *                   type: object
+ *                   description: Information about the applicant
+ *                 referee:
+ *                   type: object
+ *                   description: Referee user details
+ *                 template:
+ *                   type: object
+ *                   description: Template used for the letter
+ *                 created_at:
+ *                   type: string
+ *                   format: date-time
+ *                 completed_at:
+ *                   type: string
+ *                   format: date-time
+ *                 letter_content:
+ *                   type: string
+ *                   description: Full content of the letter (only visible to referee or if completed)
+ *                 generation_parameters:
+ *                   type: object
+ *                   description: Preferences and extra context used to generate the letter
+ *       403:
+ *         description: Not authorized to view this letter
  *       404:
- *         description: Template or referee not found
+ *         description: Letter not found
  *       500:
- *         description: Failed to generate letter
+ *         description: Server error
  */
-
-// POST /api/letters/generate
-router.post('/generate', auth, async (req, res) => {
+router.get('/:id', auth, async (req, res) => {
   try {
-    const { applicant_data, template_id, generation_parameters } = req.body;
-
-    // 1. Get Template
-    const template = await Template.findByPk(template_id);
-    if (!template) {
-      return res.status(404).json({ error: 'Template not found' });
-    }
-
-    // 2. Get Referee Info
-    const referee = await User.findByPk(req.user.id, {
-      attributes: ['firstName', 'lastName', 'email', 'institution', 'department', 'title']
-    });
-    console.log('Referee:', referee);
-
-    if (!referee) {
-      return res.status(404).json({ error: 'Referee not found' });
-    }
-
-    // 3. Build the Prompt  ${referee.title},  ${referee.institution}, ${referee.department}
-    const prompt = `You are writing a ${template.category} short 100 words recommendation letter.
-    Referee Info: ${referee.firstName} ${referee.lastName}
-    Applicant Info: ${JSON.stringify(applicant_data, null, 2)}
-
-    Template: ${template.promptTemplate}
-
-    Instructions: Please write a personalized letter based on this data.
-    ${generation_parameters?.tone ? `Tone: ${generation_parameters.tone}` : ''}
-    ${generation_parameters?.length ? `Length: ${generation_parameters.length}` : ''}
-    ${generation_parameters?.detailLevel ? `Detail Level: ${generation_parameters.detailLevel}` : ''}`;
-
-    // 4. Generate Letter with Ollama only
-    let generatedText;
-    let modelUsed = 'ollama-llama2';
-
-    try {
-      generatedText = await generateWithOllama(prompt);
-    } catch (generationError) {
-      console.error('Ollama Generation Error:', generationError.message);
-      return res.status(500).json({ error: 'Failed to generate letter with Ollama.' });
-    }
-
-    // 5. Save the Letter
-    const letter = await Letter.create({
-      referee_id: req.user.id,
-      applicant_data,
-      template_id,
-      generation_parameters,
-      letter_content: generatedText,
-      model_used: modelUsed,
-      generation_attempts: 1,
-      status: 'draft'
-    });
-    //  // 4. Generate Letter using selected model
-    // let generatedText;
-    // let modelUsed = 'ollama-llama2';
-
-    // try {
-    //   if (model === 'gemini-pro') {
-    //     generatedText = await generateLetterGemini(prompt);
-    //     modelUsed = 'gemini-pro';
-    //   } else {
-    //     // default: ollama
-    //     generatedText = await generateWithOllama(prompt);
-    //   }
-    // } catch (generationError) {
-    //   console.error('AI Generation Error:', generationError.message);
-    //   return res.status(500).json({ error: 'Failed to generate letter with selected model.' });
-    // }
-
-    // // 5. Save the Letter
-    // const letter = await Letter.create({
-    //   referee_id: req.user.id,
-    //   applicant_data,
-    //   template_id,
-    //   generation_parameters,
-    //   letter_content: generatedText,
-    //   model_used: modelUsed,
-    //   generation_attempts: 1,
-    //   status: 'draft'
-    // });
-
-    res.status(201).json(letter);
-
-  } catch (err) {
-    if (err.response?.status === 429) {
-      return res.status(429).json({ error: 'Rate limit reached. Please wait before trying again.' });
-    }
-    console.error('Error generating letter:', err.message);
-    res.status(500).json({ error: 'Failed to generate letter' });
-  }
-});
-
-
-// UPDATE
-// router.put('/:id', auth, async (req, res) => {
-//   const letter = await Letter.findByPk(req.params.id);
-//   if (!letter) return res.status(404).json({ error: 'Not found' });
-//   await letter.update(req.body);
-//   res.json(letter);
-// });
-
-/**
- * @swagger
- * /api/letters/{id}:
- *   put:
- *     summary: Update a letter (referee only)
- *     tags: [Letters]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Letter updated
- */
-router.put('/:id', auth, roleAuth('referee'), async (req, res) => {
-  try {
-    const letter = await Letter.findByPk(req.params.id);
-    if (!letter) return res.status(404).json({ error: 'Not found' });
-
-    await letter.update(req.body); // Only allow safe fields
-    res.json(letter);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-/**
- * @swagger
- * /api/letters/{id}:
- *   delete:
- *     summary: Delete a letter (referee only)
- *     tags: [Letters]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Letter deleted
- */
-// DELETE
-router.delete('/:id', auth, async (req, res) => {
-  const letter = await Letter.findByPk(req.params.id);
-  if (!letter) return res.status(404).json({ error: 'Not found' });
-  await letter.destroy();
-  res.json({ message: 'Deleted' });
-});
-
-// POST /api/letters/generate
-router.post('/generate', auth, roleAuth('referee'), async (req, res) => {
-  try {
-    const { letterId, prompt } = req.body;
-
-    // mock OpenAI generation (replace later)
-    const generatedText = `Generated letter using prompt: ${prompt}`;
-
-    const letter = await Letter.findByPk(letterId);
-    if (!letter) return res.status(404).json({ error: 'Letter not found' });
-
-    await letter.update({
-      letter_content: generatedText,
-      model_used: 'gpt-4',
-      status: 'generated',
-      generation_attempts: letter.generation_attempts + 1
-    });
-
-    res.json(letter);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-module.exports = router;
-
-
-
-
-/*
-const express = require('express');
-const router = express.Router();
-const { body, validationResult, param } = require('express-validator');
-const auth = require('../middleware/auth');
-const roleAuth = require('../middleware/roleAuth');
-const rateLimit = require('express-rate-limit');
-const { Letter, User, Template, GenerationLog } = require('../models');
-const aiService = require('../services/aiService');
-const pdfService = require('../services/pdfService');
-const { Op } = require('sequelize');
-
-// Rate limiting for letter generation
-const generateLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour
-  max: 10, // 10 letters per hour per user
-  message: {
-    error: 'Too many letter generation requests. Please try again later.'
-  }
-});
-
-// Rate limiting for letter requests
-const requestLimiter = rateLimit({
-  windowMs: 24 * 60 * 60 * 1000, // 24 hours
-  max: 5, // 5 requests per day per user
-  message: {
-    error: 'Too many recommendation requests. Please try again tomorrow.'
-  }
-});
-
-// Validation middleware
-const validateLetterGeneration = [
-  body('applicantData.firstName').notEmpty().withMessage('First name is required'),
-  body('applicantData.lastName').notEmpty().withMessage('Last name is required'),
-  body('applicantData.email').isEmail().withMessage('Valid email is required'),
-  body('applicantData.institution').notEmpty().withMessage('Institution is required'),
-  body('applicantData.program').notEmpty().withMessage('Program is required'),
-  body('letterConfig.purpose').isIn(['academic', 'job', 'scholarship', 'graduate']).withMessage('Valid purpose is required'),
-  body('letterConfig.tone').isIn(['formal', 'enthusiastic', 'balanced']).withMessage('Valid tone is required'),
-  body('letterConfig.length').isIn(['short', 'medium', 'long']).withMessage('Valid length is required'),
-  body('templateId').isUUID().withMessage('Valid template ID is required'),
-  body('refereeNotes').optional().isLength({ max: 1000 }).withMessage('Referee notes too long')
-];
-
-const validateLetterRequest = [
-  body('professorEmail').isEmail().withMessage('Valid professor email is required'),
-  body('applicantData.firstName').notEmpty().withMessage('First name is required'),
-  body('applicantData.lastName').notEmpty().withMessage('Last name is required'),
-  body('applicantData.email').isEmail().withMessage('Valid email is required'),
-  body('message').optional().isLength({ max: 500 }).withMessage('Message too long'),
-  body('deadline').optional().isISO8601().withMessage('Valid deadline date required')
-];
-
-// GET /api/letters - Get user's letters
-router.get('/', auth, async (req, res) => {
-  try {
-    const { page = 1, limit = 10, status, search } = req.query;
-    const offset = (page - 1) * limit;
-    
-    const whereClause = {};
-    
-    if (req.user.role === 'referee') {
-      whereClause.refereeId = req.user.id;
-    } else {
-      whereClause['$applicantData.email$'] = req.user.email;
-    }
-    
-    if (status) {
-      whereClause.status = status;
-    }
-    
-    if (search) {
-      whereClause[Op.or] = [
-        { '$applicantData.firstName$': { [Op.iLike]: `%${search}%` } },
-        { '$applicantData.lastName$': { [Op.iLike]: `%${search}%` } },
-        { '$applicantData.program$': { [Op.iLike]: `%${search}%` } }
-      ];
-    }
-    
-    const letters = await Letter.findAndCountAll({
-      where: whereClause,
+    const letter = await Letter.findByPk(req.params.id, {
       include: [
+        {
+          model: Template,
+          as: 'template',
+          attributes: ['id', 'name', 'description']
+        },
         {
           model: User,
           as: 'referee',
           attributes: ['id', 'firstName', 'lastName', 'email', 'institution']
-        },
-        {
-          model: Template,
-          attributes: ['id', 'name', 'description']
-        }
-      ],
-      order: [['createdAt', 'DESC']],
-      limit: parseInt(limit),
-      offset: offset
-    });
-    
-    res.json({
-      letters: letters.rows,
-      pagination: {
-        total: letters.count,
-        page: parseInt(page),
-        limit: parseInt(limit),
-        totalPages: Math.ceil(letters.count / limit)
-      }
-    });
-  } catch (error) {
-    console.error('Error fetching letters:', error);
-    res.status(500).json({ error: 'Failed to fetch letters' });
-  }
-});
-
-// GET /api/letters/drafts - Get user's draft letters
-router.get('/drafts', auth, roleAuth(['referee']), async (req, res) => {
-  try {
-    const drafts = await Letter.findAll({
-      where: {
-        refereeId: req.user.id,
-        status: 'draft'
-      },
-      include: [
-        {
-          model: Template,
-          attributes: ['id', 'name', 'description']
-        }
-      ],
-      order: [['updatedAt', 'DESC']]
-    });
-    
-    res.json(drafts);
-  } catch (error) {
-    console.error('Error fetching drafts:', error);
-    res.status(500).json({ error: 'Failed to fetch drafts' });
-  }
-});
-
-// GET /api/letters/:id - Get specific letter
-router.get('/:id', auth, [
-  param('id').isUUID().withMessage('Valid letter ID is required')
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-    
-    const letter = await Letter.findByPk(req.params.id, {
-      include: [
-        {
-          model: User,
-          as: 'referee',
-          attributes: ['id', 'firstName', 'lastName', 'email', 'institution', 'department']
-        },
-        {
-          model: Template,
-          attributes: ['id', 'name', 'description', 'templateHtml']
         }
       ]
     });
-    
+
     if (!letter) {
       return res.status(404).json({ error: 'Letter not found' });
     }
-    
-    // Check access permissions
-    const hasAccess = 
-      req.user.role === 'referee' && letter.refereeId === req.user.id ||
-      req.user.role === 'applicant' && letter.applicantData.email === req.user.email;
-    
-    if (!hasAccess) {
-      return res.status(403).json({ error: 'Access denied' });
+
+    // Check authorization
+    const isReferee = req.user.role === 'referee' && letter.referee_id === req.user.id;
+    const isApplicant = req.user.role === 'applicant' &&
+      letter.applicant_data.requester_id === req.user.id;
+
+    if (!isReferee && !isApplicant) {
+      return res.status(403).json({ error: 'Not authorized to view this letter' });
     }
-    
-    res.json(letter);
+
+    // Hide content from applicant unless completed
+    const response = {
+      id: letter.id,
+      status: letter.status,
+      applicant_data: letter.applicant_data,
+      referee: letter.referee,
+      template: letter.template,
+      created_at: letter.created_at,
+      completed_at: letter.status === 'completed' ? letter.updated_at : null
+    };
+
+    if (isReferee || letter.status === 'completed') {
+      response.letter_content = letter.letter_content;
+      response.generation_parameters = letter.generation_parameters;
+    }
+
+    res.json(response);
   } catch (error) {
     console.error('Error fetching letter:', error);
     res.status(500).json({ error: 'Failed to fetch letter' });
   }
 });
 
-// POST /api/letters/request - Request recommendation letter (applicant)
-router.post('/request', auth, roleAuth(['applicant']), requestLimiter, validateLetterRequest, async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-    
-    const { professorEmail, applicantData, message, deadline } = req.body;
-    
-    // Find professor
-    const professor = await User.findOne({
-      where: { email: professorEmail, role: 'referee' }
-    });
-    
-    if (!professor) {
-      return res.status(404).json({ error: 'Professor not found or not verified' });
-    }
-    
-    // Check if request already exists
-    const existingRequest = await Letter.findOne({
-      where: {
-        refereeId: professor.id,
-        'applicantData.email': applicantData.email,
-        status: 'requested'
-      }
-    });
-    
-    if (existingRequest) {
-      return res.status(400).json({ error: 'Request already exists' });
-    }
-    
-    // Create letter request
-    const letterRequest = await Letter.create({
-      refereeId: professor.id,
-      applicantData: {
-        ...applicantData,
-        requestMessage: message,
-        requesterUserId: req.user.id
-      },
-      status: 'requested',
-      deadline: deadline || null,
-      letterConfig: {
-        purpose: 'academic',
-        tone: 'formal',
-        length: 'medium'
-      }
-    });
-    
-    // TODO: Send email notification to professor
-    // await emailService.sendRecommendationRequest(professor.email, letterRequest);
-    
-    res.status(201).json({
-      message: 'Recommendation request sent successfully',
-      letterRequest
-    });
-  } catch (error) {
-    console.error('Error creating letter request:', error);
-    res.status(500).json({ error: 'Failed to create letter request' });
-  }
-});
+// ==========================================
+// UTILITY FUNCTIONS
+// ==========================================
 
-// POST /api/letters/generate - Generate recommendation letter (referee)
-router.post('/generate', auth, roleAuth(['referee']), generateLimiter, validateLetterGeneration, async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-    
-    const { applicantData, letterConfig, templateId, refereeNotes, letterId } = req.body;
-    
-    // Get template
-    const template = await Template.findByPk(templateId);
-    if (!template) {
-      return res.status(404).json({ error: 'Template not found' });
-    }
-    
-    // Get referee info
-    const referee = await User.findByPk(req.user.id, {
-      attributes: ['id', 'firstName', 'lastName', 'email', 'institution', 'department', 'title']
-    });
-    
-    // Generate letter using AI service
-    const generationResult = await aiService.generateRecommendationLetter({
-      applicantData,
-      refereeData: referee,
-      letterConfig,
-      template,
-      refereeNotes
-    });
-    
-    let letter;
-    
-    if (letterId) {
-      // Update existing letter
-      letter = await Letter.findByPk(letterId);
-      if (!letter || letter.refereeId !== req.user.id) {
-        return res.status(403).json({ error: 'Access denied' });
-      }
-      
-      letter.letterContent = generationResult.content;
-      letter.status = 'draft';
-      letter.updatedAt = new Date();
-      await letter.save();
-    } else {
-      // Create new letter
-      letter = await Letter.create({
-        refereeId: req.user.id,
-        applicantData,
-        letterContent: generationResult.content,
-        letterConfig,
-        templateId,
-        status: 'draft'
-      });
-    }
-    
-    // Log generation for analytics
-    await GenerationLog.create({
-      letterId: letter.id,
-      promptUsed: generationResult.prompt,
-      aiResponse: generationResult.rawResponse,
-      tokensUsed: generationResult.tokensUsed,
-      processingTime: generationResult.processingTime
-    });
-    
-    res.json({
-      message: 'Letter generated successfully',
-      letter: {
-        id: letter.id,
-        content: letter.letterContent,
-        status: letter.status,
-        createdAt: letter.createdAt,
-        updatedAt: letter.updatedAt
-      }
-    });
-  } catch (error) {
-    console.error('Error generating letter:', error);
-    res.status(500).json({ error: 'Failed to generate letter' });
-  }
-});
+function fillTemplate(template, values) {
+  return template.replace(/{(.*?)}/g, (_, key) => values[key] || `{${key}}`);
+}
 
-// PUT /api/letters/:id - Update letter content
-router.put('/:id', auth, roleAuth(['referee']), [
-  param('id').isUUID().withMessage('Valid letter ID is required'),
-  body('letterContent').notEmpty().withMessage('Letter content is required'),
-  body('status').optional().isIn(['draft', 'completed']).withMessage('Valid status required')
-], async (req, res) => {
+// ==========================================
+// LEGACY/ADMIN ROUTES (Optional)
+// ==========================================
+
+// DELETE - for admin or cleanup
+router.delete('/:id', auth, async (req, res) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-    
     const letter = await Letter.findByPk(req.params.id);
-    
-    if (!letter) {
-      return res.status(404).json({ error: 'Letter not found' });
-    }
-    
-    if (letter.refereeId !== req.user.id) {
-      return res.status(403).json({ error: 'Access denied' });
-    }
-    
-    const { letterContent, status } = req.body;
-    
-    letter.letterContent = letterContent;
-    if (status) letter.status = status;
-    letter.updatedAt = new Date();
-    
-    await letter.save();
-    
-    res.json({
-      message: 'Letter updated successfully',
-      letter
-    });
-  } catch (error) {
-    console.error('Error updating letter:', error);
-    res.status(500).json({ error: 'Failed to update letter' });
-  }
-});
+    if (!letter) return res.status(404).json({ error: 'Letter not found' });
 
-// POST /api/letters/:id/export - Export letter to PDF
-router.post('/:id/export', auth, [
-  param('id').isUUID().withMessage('Valid letter ID is required'),
-  body('format').optional().isIn(['pdf', 'docx']).withMessage('Valid format required')
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+    // Check authorization
+    if (req.user.role !== 'admin' && letter.referee_id !== req.user.id) {
+      return res.status(403).json({ error: 'Not authorized' });
     }
-    
-    const letter = await Letter.findByPk(req.params.id, {
-      include: [
-        {
-          model: User,
-          as: 'referee',
-          attributes: ['firstName', 'lastName', 'title', 'institution', 'department']
-        },
-        {
-          model: Template,
-          attributes: ['name', 'templateHtml']
-        }
-      ]
-    });
-    
-    if (!letter) {
-      return res.status(404).json({ error: 'Letter not found' });
-    }
-    
-    // Check access permissions
-    const hasAccess = 
-      req.user.role === 'referee' && letter.refereeId === req.user.id ||
-      req.user.role === 'applicant' && letter.applicantData.email === req.user.email;
-    
-    if (!hasAccess) {
-      return res.status(403).json({ error: 'Access denied' });
-    }
-    
-    if (letter.status !== 'completed') {
-      return res.status(400).json({ error: 'Letter must be completed before export' });
-    }
-    
-    const format = req.body.format || 'pdf';
-    
-    // Generate PDF
-    const pdfBuffer = await pdfService.generatePDF({
-      letterContent: letter.letterContent,
-      applicantData: letter.applicantData,
-      refereeData: letter.referee,
-      template: letter.Template,
-      format
-    });
-    
-    const filename = `recommendation_letter_${letter.applicantData.firstName}_${letter.applicantData.lastName}.${format}`;
-    
-    res.setHeader('Content-Type', format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    res.send(pdfBuffer);
-  } catch (error) {
-    console.error('Error exporting letter:', error);
-    res.status(500).json({ error: 'Failed to export letter' });
-  }
-});
 
-// DELETE /api/letters/:id - Delete letter
-router.delete('/:id', auth, roleAuth(['referee']), [
-  param('id').isUUID().withMessage('Valid letter ID is required')
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-    
-    const letter = await Letter.findByPk(req.params.id);
-    
-    if (!letter) {
-      return res.status(404).json({ error: 'Letter not found' });
-    }
-    
-    if (letter.refereeId !== req.user.id) {
-      return res.status(403).json({ error: 'Access denied' });
-    }
-    
     await letter.destroy();
-    
     res.json({ message: 'Letter deleted successfully' });
-  } catch (error) {
-    console.error('Error deleting letter:', error);
-    res.status(500).json({ error: 'Failed to delete letter' });
-  }
-});
-
-// POST /api/letters/:id/approve - Approve letter request
-router.post('/:id/approve', auth, roleAuth(['referee']), [
-  param('id').isUUID().withMessage('Valid letter ID is required')
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-    
-    const letter = await Letter.findByPk(req.params.id);
-    
-    if (!letter) {
-      return res.status(404).json({ error: 'Letter not found' });
-    }
-    
-    if (letter.refereeId !== req.user.id) {
-      return res.status(403).json({ error: 'Access denied' });
-    }
-    
-    if (letter.status !== 'requested') {
-      return res.status(400).json({ error: 'Letter is not in requested status' });
-    }
-    
-    letter.status = 'approved';
-    letter.updatedAt = new Date();
-    await letter.save();
-    
-    // TODO: Send email notification to applicant
-    // await emailService.sendApprovalNotification(letter.applicantData.email, letter);
-    
-    res.json({
-      message: 'Letter request approved successfully',
-      letter
-    });
-  } catch (error) {
-    console.error('Error approving letter:', error);
-    res.status(500).json({ error: 'Failed to approve letter' });
-  }
-});
-
-// POST /api/letters/:id/reject - Reject letter request
-router.post('/:id/reject', auth, roleAuth(['referee']), [
-  param('id').isUUID().withMessage('Valid letter ID is required'),
-  body('reason').optional().isLength({ max: 500 }).withMessage('Reason too long')
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-    
-    const letter = await Letter.findByPk(req.params.id);
-    
-    if (!letter) {
-      return res.status(404).json({ error: 'Letter not found' });
-    }
-    
-    if (letter.refereeId !== req.user.id) {
-      return res.status(403).json({ error: 'Access denied' });
-    }
-    
-    if (letter.status !== 'requested') {
-      return res.status(400).json({ error: 'Letter is not in requested status' });
-    }
-    
-    letter.status = 'rejected';
-    letter.rejectionReason = req.body.reason || null;
-    letter.updatedAt = new Date();
-    await letter.save();
-    
-    // TODO: Send email notification to applicant
-    // await emailService.sendRejectionNotification(letter.applicantData.email, letter);
-    
-    res.json({
-      message: 'Letter request rejected',
-      letter
-    });
-  } catch (error) {
-    console.error('Error rejecting letter:', error);
-    res.status(500).json({ error: 'Failed to reject letter' });
-  }
-});
-
-// GET /api/letters/analytics/stats - Get letter statistics (referee)
-router.get('/analytics/stats', auth, roleAuth(['referee']), async (req, res) => {
-  try {
-    const stats = await Letter.findAll({
-      where: { refereeId: req.user.id },
-      attributes: [
-        'status',
-        [Letter.sequelize.fn('COUNT', Letter.sequelize.col('id')), 'count']
-      ],
-      group: ['status']
-    });
-    
-    const totalLetters = await Letter.count({
-      where: { refereeId: req.user.id }
-    });
-    
-    const completedLetters = await Letter.count({
-      where: { 
-        refereeId: req.user.id,
-        status: 'completed'
-      }
-    });
-    
-    res.json({
-      totalLetters,
-      completedLetters,
-      completionRate: totalLetters > 0 ? (completedLetters / totalLetters * 100).toFixed(1) : 0,
-      statusBreakdown: stats.reduce((acc, stat) => {
-        acc[stat.status] = parseInt(stat.get('count'));
-        return acc;
-      }, {})
-    });
-  } catch (error) {
-    console.error('Error fetching letter stats:', error);
-    res.status(500).json({ error: 'Failed to fetch statistics' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
 module.exports = router;
-*/

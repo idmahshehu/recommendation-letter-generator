@@ -47,7 +47,7 @@ router.get('/', auth, async (req, res) => {
                     {
                         model: User,
                         as: 'creator',
-                        attributes: ['id', 'firstName', 'lastName', 'email'] 
+                        attributes: ['id', 'firstName', 'lastName', 'email']
                     }
                 ]
             });
@@ -58,7 +58,7 @@ router.get('/', auth, async (req, res) => {
                     {
                         model: User,
                         as: 'creator',
-                        attributes: ['id', 'firstName', 'lastName', 'email'] 
+                        attributes: ['id', 'firstName', 'lastName', 'email']
                     }
                 ]
             });
@@ -73,7 +73,7 @@ router.get('/', auth, async (req, res) => {
                     {
                         model: User,
                         as: 'creator',
-                        attributes: ['id', 'firstName', 'lastName', 'email'] 
+                        attributes: ['id', 'firstName', 'lastName', 'email']
                     }
                 ]
             });
@@ -87,7 +87,7 @@ router.get('/', auth, async (req, res) => {
         //     return new Date(a.createdAt) - new Date(b.createdAt);
         // });
 
-        res.json(templates);
+        res.json({ templates });
     } catch (error) {
         console.error('Error fetching templates:', error);
         res.status(500).json({ error: 'Failed to fetch templates' });
@@ -123,7 +123,7 @@ router.get('/:id', auth, async (req, res) => {
                 {
                     model: User,
                     as: 'creator',
-                    attributes: ['id', 'firstName', 'lastName', 'email'] 
+                    attributes: ['id', 'firstName', 'lastName', 'email']
                 }
             ]
         });
@@ -133,11 +133,11 @@ router.get('/:id', auth, async (req, res) => {
         }
 
         // Check if user can access this template
-        if (!template.is_system_template && template.created_by !== req.user.id) {
-            return res.status(403).json({ error: 'Access denied' });
-        }
+        // if (template.is_system_template !== true && template.created_by !== req.user.id) {
+        //     return res.status(403).json({ error: 'Access denied' });
+        // }
 
-        res.json(template);
+        res.json({ template });
     } catch (error) {
         console.error('Error fetching template:', error);
         res.status(500).json({ error: 'Failed to fetch template' });
@@ -201,7 +201,7 @@ router.post('/', auth, roleAuth('referee'), async (req, res) => {
                 {
                     model: User,
                     as: 'creator',
-                    attributes: ['id', 'firstName', 'lastName', 'email'] 
+                    attributes: ['id', 'firstName', 'lastName', 'email']
                 }
             ]
         });
@@ -280,7 +280,7 @@ router.put('/:id', auth, roleAuth('referee'), async (req, res) => {
                 {
                     model: User,
                     as: 'creator',
-                    attributes: ['id', 'firstName', 'lastName', 'email'] 
+                    attributes: ['id', 'firstName', 'lastName', 'email']
                 }
             ]
         });
