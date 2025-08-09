@@ -70,12 +70,13 @@ const GenerateLetter = () => {
         }
     };
 
+    console.log(context);
 
     if (loading) return <div className="p-6">Loading...</div>;
 
     return (
         <div className="p-6 max-w-2xl mx-auto">
-            <h1 className="text-2xl font-bold mb-4">✍️ Generate Draft for {letter?.applicant_data?.firstName} {letter?.applicant_data?.lastName}</h1>
+            <h1 className="text-2xl font-bold mb-4"> Generate Draft for {letter?.applicant_data?.firstName} {letter?.applicant_data?.lastName}</h1>
 
             {/* Select Template */}
             <label className="block font-semibold mt-4">Template</label>
@@ -139,6 +140,7 @@ const GenerateLetter = () => {
             />
 
             <button
+                type="button"
                 onClick={handleSubmit}
                 disabled={!selectedTemplateId}
                 className="mt-6 bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 disabled:opacity-50"
