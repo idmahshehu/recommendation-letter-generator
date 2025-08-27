@@ -430,16 +430,17 @@
 // );
 
 
-// pages/dashboard/DashboardPage.tsx
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { StatsCards } from "../../components/dashboard/StatsCards";
+import { api } from "../../services/api";
+import { Navigation } from "../../components/layout/Navigation";
 
 interface Letter {
   id: string;
-  status: 'requested' | 'draft' | 'in_review' | 'completed';
+  status: 'requested' | 'in_progress' | 'draft' | 'in_review' | 'completed' | 'rejected';
   applicant: {
     name: string;
     program: string;
@@ -487,16 +488,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
   const [pendingRequests, setPendingRequests] = useState<PendingRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
+  const [actionLoading, setActionLoading] = useState<string>('');
   const { token, user } = useAuth();
   const navigate = useNavigate();
-
-  const API_BASE_URL = 'http://localhost:5000/api';
-
-  const createAuthHeaders = () => ({
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
 
   useEffect(() => {
     const fetchDashboardData = async () => {
@@ -507,20 +501,14 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
         setError('');
 
         // 1. Get all letters
-        const lettersResponse = await axios.get(
-          `${API_BASE_URL}/letters`,
-          createAuthHeaders()
-        );
+        const lettersResponse = await api.get('/letters');
 
         const letters = lettersResponse.data.letters || [];
         setAllLetters(letters);
 
         // 2. Get pending requests (referees only)
         try {
-          const pendingResponse = await axios.get(
-            `${API_BASE_URL}/letters/pending`,
-            createAuthHeaders()
-          );
+          const pendingResponse = await api.get('/letters/pending');
           setPendingRequests(pendingResponse.data.pending_requests || []);
         } catch (pendingError: any) {
           // Not all users have pending requests
@@ -537,6 +525,51 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
 
     fetchDashboardData();
   }, [token]);
+
+  // Handle accept/reject actions
+  const handleLetterAction = async (letterId: string, action: 'accept' | 'reject', reason?: string) => {
+    try {
+      setActionLoading(`${action}-${letterId}`);
+
+      const endpoint = action === 'accept' ? `/letters/${letterId}/accept` : `/letters/${letterId}/reject`;
+      const payload = action === 'reject' && reason ? { reason } : {};
+
+      await api.post(endpoint, payload);
+
+      // Remove from pending requests
+      setPendingRequests(prev => prev.filter(req => req.id !== letterId));
+
+      // Refresh all letters to show updated status
+      const lettersResponse = await api.get('/letters');
+      setAllLetters(lettersResponse.data.letters || []);
+
+      // Show success message
+      const message = action === 'accept'
+        ? 'Letter request accepted successfully!'
+        : 'Letter request rejected';
+
+      // You can add a toast notification here
+      console.log(message);
+
+    } catch (err: any) {
+      console.error(`Error ${action}ing letter:`, err);
+      setError(err.response?.data?.error || `Failed to ${action} letter`);
+    } finally {
+      setActionLoading('');
+    }
+  };
+
+  // Show reject modal
+  const showRejectModal = (letterId: string, applicantName: string) => {
+    const reason = window.prompt(
+      `Why are you rejecting ${applicantName}'s request?\n\nThis message will be sent to the applicant (optional):`
+    );
+
+    // If user clicked cancel, don't proceed
+    if (reason === null) return;
+
+    handleLetterAction(letterId, 'reject', reason);
+  };
 
   // Calculate stats from allLetters
   const getStats = () => {
@@ -621,236 +654,312 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
   });
 
   return (
-    <div className="space-y-8">
-      {/* Welcome Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">
-          Welcome back, {user?.firstName || 'User'}! 👋
-        </h1>
-        <p className="text-gray-600 mt-2">
-          Here's an overview of your recommendation letters
-        </p>
-      </div>
+    <div className="bg-gray-50 min-h-screen">
+      <div className="space-y-8">
+        {/* Top nav */}
+        <Navigation user={user} />
+        {/* Welcome Header */}
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="mb-8">
+            {/* <h1 className="text-3xl font-bold text-gray-900">
+              Welcome back, {user?.firstName || 'User'}! 👋
+            </h1> */}
+            <p className="text-gray-600 mt-2">
+              Overview of your recommendation letters
+            </p>
+          </div>
 
-      {/* Stats Cards */}
-      <StatsCards stats={stats} />
 
-      {/* Quick Actions */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="md:col-span-2 space-y-6">
+          {/* Stats Cards */}
+          <StatsCards stats={stats} />
 
-          {/* Pending Requests (For Referees) */}
-          {pendingRequests.length > 0 && (
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-yellow-800">
-                  🕐 Pending Requests ({pendingRequests.length})
-                </h2>
-              </div>
-              <div className="space-y-3">
-                {pendingRequests.slice(0, 3).map((request) => (
-                  <div key={request.id} className="bg-white rounded-lg p-4 border border-yellow-300">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <p className="font-medium text-gray-900">{request.applicant.name}</p>
-                        <p className="text-sm text-gray-600">{request.applicant.program}</p>
-                        {request.preferences.deadline && (
-                          <p className="text-xs text-red-600 mt-1">
-                            Due: {new Date(request.preferences.deadline).toLocaleDateString()}
-                          </p>
-                        )}
-                      </div>
-                      <button
-                        onClick={() => navigate(`/letters/${request.id}/generate`)}
-                        className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700"
-                      >
-                        Generate
-                      </button>
-                    </div>
+          {/* Quick Actions */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="md:col-span-2 space-y-6">
+
+              {/* Pending Requests (For Referees) */}
+              {/* Pending Requests (For Referees) */}
+              {pendingRequests.length > 0 && (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-lg font-semibold text-yellow-800">
+                      Pending Requests ({pendingRequests.length})
+                    </h2>
                   </div>
-                ))}
-                {pendingRequests.length > 3 && (
+                  <div className="space-y-3">
+                    {pendingRequests.slice(0, 3).map((request) => (
+                      <div key={request.id} className="bg-white rounded-lg p-4 border border-yellow-300">
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1 mr-4">
+                            <p className="font-medium text-gray-900">{request.applicant.name}</p>
+                            <p className="text-sm text-gray-600">{request.applicant.program}</p>
+                            <p className="text-sm text-gray-700 mt-1">{request.applicant.goal}</p>
+                            {request.preferences.deadline && (
+                              <p className="text-xs text-red-600 mt-1">
+                                Due: {new Date(request.preferences.deadline).toLocaleDateString()}
+                              </p>
+                            )}
+                            {request.applicant.achievements && request.applicant.achievements.length > 0 && (
+                              <div className="mt-2">
+                                <p className="text-xs text-gray-500">Key achievements:</p>
+                                <ul className="text-xs text-gray-600 ml-2">
+                                  {request.applicant.achievements.slice(0, 2).map((achievement, idx) => (
+                                    <li key={idx}>• {achievement}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                          </div>
+                          
+                          {/* Action Buttons */}
+                          <div className="flex flex-col space-y-2">
+                            <button
+                              onClick={() => handleLetterAction(request.id, 'accept')}
+                              disabled={actionLoading === `accept-${request.id}`}
+                              className="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed min-w-16"
+                            >
+                              {actionLoading === `accept-${request.id}` ? '...' : 'Accept'}
+                            </button>
+                            <button
+                              onClick={() => showRejectModal(request.id, request.applicant.name)}
+                              disabled={actionLoading === `reject-${request.id}`}
+                              className="bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed min-w-16"
+                            >
+                              {actionLoading === `reject-${request.id}` ? '...' : 'Reject'}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    {pendingRequests.length > 3 && (
+                      <button
+                        onClick={() => onNavigate?.('letters')}
+                        className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                      >
+                        View all {pendingRequests.length} requests →
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+              {/* {pendingRequests.length > 0 && (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-lg font-semibold text-yellow-800">
+                      Pending Requests ({pendingRequests.length})
+                    </h2>
+                  </div>
+                  <div className="space-y-3">
+                    {pendingRequests.slice(0, 3).map((request) => (
+                      <div key={request.id} className="bg-white rounded-lg p-4 border border-yellow-300">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <p className="font-medium text-gray-900">{request.applicant.name}</p>
+                            <p className="text-sm text-gray-600">{request.applicant.program}</p>
+                            {request.preferences.deadline && (
+                              <p className="text-xs text-red-600 mt-1">
+                                Due: {new Date(request.preferences.deadline).toLocaleDateString()}
+                              </p>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => navigate(`/letters/${request.id}/generate`)}
+                            className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700"
+                          >
+                            Generate
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    {pendingRequests.length > 3 && (
+                      <button
+                        onClick={() => onNavigate?.('letters')}
+                        className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                      >
+                        View all {pendingRequests.length} requests →
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )} */}
+
+              {/* Urgent Deadlines */}
+              {urgentDeadlines.length > 0 && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-6">
+                  <h2 className="text-lg font-semibold text-red-800 mb-4">
+                    ⚠️ Urgent Deadlines
+                  </h2>
+                  <div className="space-y-3">
+                    {urgentDeadlines.map((letter) => (
+                      <div key={letter.id} className="bg-white rounded-lg p-4 border border-red-300">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <p className="font-medium text-gray-900">{letter.applicant.name}</p>
+                            <p className="text-sm text-gray-600">{letter.applicant.program}</p>
+                            <p className="text-xs text-red-600 mt-1">
+                              Due: {letter.generation_parameters?.deadline
+                                ? new Date(letter.generation_parameters.deadline).toLocaleDateString()
+                                : 'Soon'
+                              }
+                            </p>
+                          </div>
+                          <div className="flex space-x-2">
+                            {letter.status === 'completed' ? (
+                              <button
+                                onClick={() => handleQuickAction('view_letter', letter.id)}
+                                className="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700"
+                              >
+                                View
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleQuickAction('edit_letter', letter.id)}
+                                className="bg-orange-600 text-white px-3 py-1 rounded text-sm hover:bg-orange-700"
+                              >
+                                {letter.status === 'requested' ? 'Start' : 'Continue'}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Recent Letters */}
+              <div className="bg-white rounded-lg shadow p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-semibold text-gray-900">Recent Letters</h2>
                   <button
-                    onClick={() => onNavigate?.('letters')}
+                    onClick={() => handleQuickAction('view_all_letters')}
                     className="text-blue-600 hover:text-blue-800 text-sm font-medium"
                   >
-                    View all {pendingRequests.length} requests →
+                    View all →
                   </button>
+                </div>
+
+                {recentLetters.length === 0 ? (
+                  <div className="text-center py-8">
+                    <div className="text-gray-400 text-4xl mb-2">📭</div>
+                    <p className="text-gray-500">No letters yet</p>
+                    <button
+                      onClick={() => handleQuickAction('new_letter')}
+                      className="mt-2 text-blue-600 hover:text-blue-800 text-sm font-medium"
+                    >
+                      Request your first letter
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {recentLetters.map((letter) => (
+                      <div key={letter.id} className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg">
+                        <div className="flex items-center space-x-3">
+                          <div className={`w-3 h-3 rounded-full ${letter.status === 'completed' ? 'bg-green-500' :
+                            letter.status === 'in_review' ? 'bg-yellow-500' :
+                            letter.status === 'draft' ? 'bg-blue-500' :
+                            letter.status === 'in_progress' ? 'bg-blue-400' :
+                            letter.status === 'rejected' ? 'bg-red-500' : 'bg-gray-500'
+                            }`}></div>
+                          <div>
+                            <p className="font-medium text-gray-900">{letter.applicant.name}</p>
+                            <p className="text-sm text-gray-500">{letter.applicant.program}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <span className={`px-2 py-1 text-xs font-medium rounded-full ${letter.status === 'completed' ? 'bg-green-100 text-green-800' :
+                            letter.status === 'in_review' ? 'bg-yellow-100 text-yellow-800' :
+                            letter.status === 'draft' ? 'bg-blue-100 text-blue-800' :
+                            letter.status === 'in_progress' ? 'bg-blue-50 text-blue-700' :
+                            letter.status === 'rejected' ? 'bg-red-100 text-red-800' :
+                            'bg-gray-100 text-gray-800'
+                            }`}>
+                            {letter.status.replace('_', ' ')}
+                          </span>
+                          <button
+                            // onClick={() => handleQuickAction('view_letter', letter.id)}
+                            onClick={() => {
+                              if (letter.status === 'draft') {
+                                handleQuickAction('edit_letter', letter.id);
+                              } else if (letter.status === 'in_review') {
+                                handleQuickAction('edit_letter', letter.id);
+                              } else if (letter.status === 'in_progress') {
+                                handleQuickAction('new_letter', letter.id); // Go to generate
+                              } else {
+                                handleQuickAction('view_letter', letter.id);
+                              }
+                            }}
+                            className="text-gray-400 hover:text-gray-600"
+                          >
+                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
             </div>
-          )}
 
-          {/* Urgent Deadlines */}
-          {urgentDeadlines.length > 0 && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-6">
-              <h2 className="text-lg font-semibold text-red-800 mb-4">
-                ⚠️ Urgent Deadlines
-              </h2>
-              <div className="space-y-3">
-                {urgentDeadlines.map((letter) => (
-                  <div key={letter.id} className="bg-white rounded-lg p-4 border border-red-300">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <p className="font-medium text-gray-900">{letter.applicant.name}</p>
-                        <p className="text-sm text-gray-600">{letter.applicant.program}</p>
-                        <p className="text-xs text-red-600 mt-1">
-                          Due: {letter.generation_parameters?.deadline
-                            ? new Date(letter.generation_parameters.deadline).toLocaleDateString()
-                            : 'Soon'
-                          }
-                        </p>
-                      </div>
-                      <div className="flex space-x-2">
-                        {letter.status === 'completed' ? (
-                          <button
-                            onClick={() => handleQuickAction('view_letter', letter.id)}
-                            className="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700"
-                          >
-                            View
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => handleQuickAction('edit_letter', letter.id)}
-                            className="bg-orange-600 text-white px-3 py-1 rounded text-sm hover:bg-orange-700"
-                          >
-                            {letter.status === 'requested' ? 'Start' : 'Continue'}
-                          </button>
-                        )}
-                      </div>
-                    </div>
+            {/* Sidebar - Quick Actions */}
+            {/* <div className="space-y-6">
+              <div className="bg-white rounded-lg shadow p-6">
+                <h2 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h2>
+                <div className="space-y-3">
+                  <button
+                    onClick={() => handleQuickAction('new_letter')} // now routes to /letters/new
+                    className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors text-left"
+                  >
+                    📝 Request New Letter
+                  </button>
+                  <button
+                    onClick={() => handleQuickAction('view_all_letters')}
+                    className="w-full bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 transition-colors text-left"
+                  >
+                    📋 View All Letters
+                  </button>
+                  <button
+                    onClick={() => onNavigate?.('templates')}
+                    className="w-full bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 transition-colors text-left"
+                  >
+                    📄 Manage Templates
+                  </button>
+                </div>
+              </div> */}
+
+            {/* Stats Summary */}
+            {/* <div className="bg-white rounded-lg shadow p-6">
+                <h2 className="text-lg font-semibold text-gray-900 mb-4">Summary</h2>
+                <div className="space-y-3">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">This Month</span>
+                    <span className="font-medium">
+                      {allLetters.filter(l => {
+                        const created = new Date(l.created_at);
+                        const now = new Date();
+                        return created.getMonth() === now.getMonth() &&
+                          created.getFullYear() === now.getFullYear();
+                      }).length}
+                    </span>
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Recent Letters */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-900">Recent Letters</h2>
-              <button
-                onClick={() => handleQuickAction('view_all_letters')}
-                className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-              >
-                View all →
-              </button>
-            </div>
-
-            {recentLetters.length === 0 ? (
-              <div className="text-center py-8">
-                <div className="text-gray-400 text-4xl mb-2">📭</div>
-                <p className="text-gray-500">No letters yet</p>
-                <button
-                  onClick={() => handleQuickAction('new_letter')}
-                  className="mt-2 text-blue-600 hover:text-blue-800 text-sm font-medium"
-                >
-                  Request your first letter
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {recentLetters.map((letter) => (
-                  <div key={letter.id} className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg">
-                    <div className="flex items-center space-x-3">
-                      <div className={`w-3 h-3 rounded-full ${letter.status === 'completed' ? 'bg-green-500' :
-                        letter.status === 'in_review' ? 'bg-yellow-500' :
-                          letter.status === 'draft' ? 'bg-blue-500' :
-                            'bg-gray-500'
-                        }`}></div>
-                      <div>
-                        <p className="font-medium text-gray-900">{letter.applicant.name}</p>
-                        <p className="text-sm text-gray-500">{letter.applicant.program}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <span className={`px-2 py-1 text-xs font-medium rounded-full ${letter.status === 'completed' ? 'bg-green-100 text-green-800' :
-                        letter.status === 'in_review' ? 'bg-yellow-100 text-yellow-800' :
-                          letter.status === 'draft' ? 'bg-blue-100 text-blue-800' :
-                            'bg-gray-100 text-gray-800'
-                        }`}>
-                        {letter.status.replace('_', ' ')}
-                      </span>
-                      <button
-                        // onClick={() => handleQuickAction('view_letter', letter.id)}
-                        onClick={() => {
-                          if (letter.status === 'draft') {
-                            handleQuickAction('edit_letter', letter.id); // navigate to generate
-                          } else if (letter.status === 'in_review') {
-                            handleQuickAction('edit_letter', letter.id); // navigate to edit
-                          } else {
-                            handleQuickAction('view_letter', letter.id); // default view
-                          }
-                        }}
-                        className="text-gray-400 hover:text-gray-600"
-                      >
-                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                        </svg>
-                      </button>
-                    </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Completion Rate</span>
+                    <span className="font-medium">
+                      {allLetters.length > 0
+                        ? Math.round((stats.completed / allLetters.length) * 100) + '%'
+                        : '0%'
+                      }
+                    </span>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Sidebar - Quick Actions */}
-        <div className="space-y-6">
-          <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h2>
-            <div className="space-y-3">
-              <button
-                onClick={() => handleQuickAction('new_letter')} // now routes to /letters/new
-                className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors text-left"
-              >
-                📝 Request New Letter
-              </button>
-              <button
-                onClick={() => handleQuickAction('view_all_letters')}
-                className="w-full bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 transition-colors text-left"
-              >
-                📋 View All Letters
-              </button>
-              <button
-                onClick={() => onNavigate?.('templates')}
-                className="w-full bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 transition-colors text-left"
-              >
-                📄 Manage Templates
-              </button>
-            </div>
-          </div>
-
-          {/* Stats Summary */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Summary</h2>
-            <div className="space-y-3">
-              <div className="flex justify-between">
-                <span className="text-gray-600">This Month</span>
-                <span className="font-medium">
-                  {allLetters.filter(l => {
-                    const created = new Date(l.created_at);
-                    const now = new Date();
-                    return created.getMonth() === now.getMonth() &&
-                      created.getFullYear() === now.getFullYear();
-                  }).length}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Completion Rate</span>
-                <span className="font-medium">
-                  {allLetters.length > 0
-                    ? Math.round((stats.completed / allLetters.length) * 100) + '%'
-                    : '0%'
-                  }
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Avg. Response Time</span>
-                <span className="font-medium">2-3 days</span>
-              </div>
-            </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Avg. Response Time</span>
+                    <span className="font-medium">2-3 days</span>
+                  </div>
+                </div>
+              </div> */}
+            {/* </div> */}
           </div>
         </div>
       </div>

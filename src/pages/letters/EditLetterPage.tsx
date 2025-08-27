@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import axios from 'axios';
 import { useParams, useNavigate } from 'react-router-dom';
+import { api } from '../../services/api';
 
 const EditLetterPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -11,11 +11,7 @@ const EditLetterPage: React.FC = () => {
   useEffect(() => {
     const fetchLetter = async () => {
       try {
-        const res = await axios.get(`http://localhost:5000/api/letters/${id}`, {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem('token')}`,
-          },
-        });
+        const res = await api.get(`/letters/${id}`);
         console.log('Letter response:', res.data);
         setContent(res.data.letter_content || res.data.letter?.letter_content || '');
       } catch (err) {
@@ -30,14 +26,9 @@ const EditLetterPage: React.FC = () => {
 
   const handleSave = async () => {
     try {
-      await axios.put(
-        `http://localhost:5000/api/letters/${id}/edit`,
-        { letter_content: content },
-        {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem('token')}`,
-          },
-        }
+      await api.put(
+        `/letters/${id}/edit`,
+        { letter_content: content }
       );
       alert('Letter updated successfully');
       navigate('/dashboard');

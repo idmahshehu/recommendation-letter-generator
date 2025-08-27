@@ -10,9 +10,9 @@ const Letter = db.Letter;
 const User = db.User;
 const Template = db.Template;
 
-// ==========================================
+// ------------------------------------------------
 // APPLICANT FLOW - Step 1: Request Letter
-// ==========================================
+// ------------------------------------------------
 
 /**
  * @swagger
@@ -95,7 +95,7 @@ router.post('/request', auth, roleAuth('applicant'), async (req, res) => {
       referee_id,
       applicant_data: {
         ...applicant_data,
-        requester_id: req.user.id // Link to the requesting user
+        requester_id: req.user.id // requesting user id
       },
       generation_parameters: preferences,
       status: 'requested' // Key: starts as 'requested'
@@ -119,9 +119,9 @@ router.post('/request', auth, roleAuth('applicant'), async (req, res) => {
   }
 });
 
-// ==========================================
+// ------------------------------------------------
 // REFEREE FLOW - Step 2: View Pending Requests
-// ==========================================
+// ------------------------------------------------
 
 /**
  * @swagger
@@ -172,9 +172,174 @@ router.get('/pending', auth, roleAuth('referee'), async (req, res) => {
   }
 });
 
-// ==========================================
+// ------------------------------------------------
+// REFEREE FLOW - Accept Pending Requests
+// ------------------------------------------------
+
+/**
+ * @swagger
+ * /api/letters/{id}/accept:
+ *   post:
+ *     summary: Accept a pending letter request (referee only)
+ *     tags: [Letters]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: The ID of the letter request to accept
+ *     responses:
+ *       200:
+ *         description: Letter request accepted
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Letter request accepted
+ *                 letter:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                     status:
+ *                       type: string
+ *                       example: in_progress
+ *       404:
+ *         description: Letter request not found or already processed
+ *       500:
+ *         description: Failed to accept requests
+ */
+
+router.post('/:id/accept', auth, roleAuth('referee'), async (req, res) => {
+  try {
+    const letter = await Letter.findOne({
+      where: {
+        id: req.params.id,
+        referee_id: req.user.id,
+        status: 'requested'
+      }
+    });
+
+    if(!letter) {
+      return res.status(404).json({ error: 'Letter request not found or already processed' });
+    }
+
+    await letter.update({
+      status: 'in_progress'
+    })
+
+    res.json({
+      message: 'Letter request accepted',
+      letter: {
+        id: letter.id,
+        status: letter.status
+      }
+    });
+  } catch (error) {
+    console.error('Error accepting letter request:', error);
+    res.status(500).json({ error: 'Failed to accept requests' });
+  }
+});
+
+// ------------------------------------------------
+// REFEREE FLOW - Reject Pending Requests
+// ------------------------------------------------
+
+/**
+ * @swagger
+ * /api/letters/{id}/reject:
+ *   post:
+ *     summary: Reject a pending letter request (referee only)
+ *     tags: [Letters]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: The ID of the letter request to reject
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               reason:
+ *                 type: string
+ *                 example: "Unfortunately, I don't have enough familiarity with your work to write a strong recommendation."
+ *     responses:
+ *       200:
+ *         description: Letter request rejected
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Letter request rejected
+ *                 letter:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                     status:
+ *                       type: string
+ *                       example: rejected
+ *       404:
+ *         description: Letter request not found or already processed
+ *       500:
+ *         description: Failed to reject request
+ */
+router.post('/:id/reject', auth, roleAuth('referee'), async (req, res) => {
+  try {
+    const { reason } = req.body;
+
+    const letter = await Letter.findOne({
+      where: {
+        id: req.params.id,
+        referee_id: req.user.id,
+        status: 'requested'
+      }
+    });
+
+    if (!letter) {
+      return res.status(404).json({ error: 'Letter request not found or already processed' });
+    }
+
+    await letter.update({
+      status: 'rejected',
+      rejection_reason: reason || null,
+      rejected_at: new Date()
+    });
+
+    // notify the applicant
+    // await notifyApplicant(letter, 'rejected');
+
+    res.json({
+      message: 'Letter request rejected',
+      letter: {
+        id: letter.id,
+        status: letter.status
+      }
+    });
+  } catch (error) {
+    console.error('Error rejecting letter request:', error);
+    res.status(500).json({ error: 'Failed to reject request' });
+  }
+});
+
+
+// ------------------------------------------------
 // REFEREE FLOW - Step 3: Generate Draft
-// ==========================================
+// ------------------------------------------------
 
 /**
  * @swagger
@@ -335,9 +500,9 @@ ${filledTemplate}`;
   }
 });
 
-// ==========================================
+// ------------------------------------------------
 // REFEREE FLOW - Edit and Finalize
-// ==========================================
+// ------------------------------------------------
 
 /**
  * @swagger
@@ -495,9 +660,9 @@ router.post('/:id/approve', auth, roleAuth('referee'), async (req, res) => {
   }
 });
 
-// ==========================================
+// ------------------------------------------------
 // SHARED ROUTES - View Letters
-// ==========================================
+// ------------------------------------------------
 
 /**
  * @swagger
@@ -777,17 +942,17 @@ router.get('/:id', auth, async (req, res) => {
   }
 });
 
-// ==========================================
+// ------------------------------------------------
 // UTILITY FUNCTIONS
-// ==========================================
+// ------------------------------------------------
 
 function fillTemplate(template, values) {
   return template.replace(/{(.*?)}/g, (_, key) => values[key] || `{${key}}`);
 }
 
-// ==========================================
+// ------------------------------------------------
 // LEGACY/ADMIN ROUTES (Optional)
-// ==========================================
+// ------------------------------------------------
 
 // DELETE - for admin or cleanup
 router.delete('/:id', auth, async (req, res) => {

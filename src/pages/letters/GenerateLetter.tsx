@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { api } from '../../services/api';
 
 const GenerateLetter = () => {
     const { id } = useParams();
@@ -20,17 +21,14 @@ const GenerateLetter = () => {
     });
 
     useEffect(() => {
+        if (!id) return; 
         const fetchData = async () => {
+            setLoading(true);
             try {
-                const token = localStorage.getItem('token');
 
                 const [letterRes, templateRes] = await Promise.all([
-                    axios.get(`http://localhost:5000/api/letters/${id}`, {
-                        headers: { Authorization: `Bearer ${token}` },
-                    }),
-                    axios.get(`http://localhost:5000/api/templates`, {
-                        headers: { Authorization: `Bearer ${token}` },
-                    }),
+                    api.get(`/letters/${id}`),
+                    api.get(`/templates`),
                 ]);
 
                 setLetter(letterRes.data);
@@ -53,20 +51,16 @@ const GenerateLetter = () => {
 
     const handleSubmit = async () => {
         try {
-            await axios.post(`http://localhost:5000/api/letters/${id}/generate-draft`, {
+            await api.post(`/letters/${id}/generate-draft`, {
                 template_id: selectedTemplateId,
                 extra_context: context
-            }, {
-                headers: {
-                    Authorization: `Bearer ${localStorage.getItem('token')}`,
-                },
             });
 
-            alert('✅ Draft generated successfully!');
+            alert('Draft generated successfully!');
             navigate('/dashboard');
         } catch (err) {
             console.error('Error generating draft:', err);
-            alert('❌ Failed to generate draft');
+            alert('Failed to generate draft');
         }
     };
 

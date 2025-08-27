@@ -64,6 +64,16 @@ module.exports = (sequelize, DataTypes) => {
             allowNull: true
         },
 
+        rejection_reason: {
+            type: DataTypes.TEXT,
+            allowNull: true
+        },
+
+        rejected_at: {
+            type: DataTypes.DATE,
+            allowNull: true
+        },
+
         current_version_id: {
             type: DataTypes.UUID,
             allowNull: true

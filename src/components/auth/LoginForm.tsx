@@ -30,7 +30,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onLogin }) => {
         try {
             if (onLogin) {
                 await onLogin(email, password);
-                navigate("/dashboard");
+                navigate("/");
             } else {
                 // Fallback if onLogin is not provided
                 console.log('Login attempt:', { email, password });

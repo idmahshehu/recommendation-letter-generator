@@ -1,9 +1,11 @@
 import React from 'react';
 import LoginForm from '../../components/auth/LoginForm';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 
 const LoginPage: React.FC = () => {
     const navigate = useNavigate();
+    const { login } = useAuth();
     const handleLogin = async (email: string, password: string) => {
 
         try {
@@ -23,10 +25,16 @@ const LoginPage: React.FC = () => {
             }
             console.log(data);
 
-            localStorage.setItem('token', data.token);
-            localStorage.setItem('user', JSON.stringify(data.user));
+            login(data.user, data.token);
 
-            navigate('/dashboard');
+            // Navigate based on user role
+            if (data.user.role === 'applicant') {
+                navigate('/applicant-dashboard');
+            } else if (data.user.role === 'referee') {
+                navigate('/dashboard');
+            } else {
+                navigate('/'); // fallback
+            }
         } catch (error) {
             throw error;
         }
