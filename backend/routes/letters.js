@@ -6,6 +6,7 @@ const { generateLetterGemini } = require('../utils/gemini');
 const { generateWithOllama } = require('../utils/ollama');
 const { json } = require('sequelize');
 const { Op, Sequelize } = require('sequelize');
+const { generateWithOpenAI } = require('../utils/openai');
 const Letter = db.Letter;
 const User = db.User;
 const Template = db.Template;
@@ -79,20 +80,55 @@ const Template = db.Template;
  */
 router.post('/request', auth, roleAuth('applicant'), async (req, res) => {
   try {
-    const { referee_id, applicant_data, preferences = {} } = req.body;
+    const { referee_email, applicant_data, preferences = {} } = req.body;
+
+        // Validate required fields
+    if (!referee_email || !applicant_data) {
+      return res.status(400).json({ 
+        error: 'Referee email and applicant data are required' 
+      });
+    }
+
+        // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(referee_email)) {
+      return res.status(400).json({ 
+        error: 'Please enter a valid email address' 
+      });
+    }
 
     // Validate referee exists
     const referee = await User.findOne({
-      where: { id: referee_id, role: 'referee' }
+      where: {
+        email: referee_email.toLowerCase().trim(),
+        role: 'referee',
+      }
     });
 
-    if (!referee) {
+        if (!referee) {
       return res.status(404).json({ error: 'Referee not found' });
     }
 
+       // Check if there's already a pending request from this applicant to this referee
+    const existingRequest = await Letter.findOne({
+      where: {
+        referee_id: referee.id,
+        'applicant_data.requester_id': req.user.id,
+        status: 'requested'
+      }
+    });
+
+    if (existingRequest) {
+      return res.status(409).json({
+        error: 'You already have a pending letter request with this referee',
+        existing_request_id: existingRequest.id
+      });
+    }
+
+
     // Create letter request
     const letter = await Letter.create({
-      referee_id,
+      referee_id: referee.id, 
       applicant_data: {
         ...applicant_data,
         requester_id: req.user.id // requesting user id
@@ -122,7 +158,10 @@ router.post('/request', auth, roleAuth('applicant'), async (req, res) => {
 // ------------------------------------------------
 // REFEREE FLOW - Step 2: View Pending Requests
 // ------------------------------------------------
-
+function formatDate(date) {
+  if (!date) return null;
+  return new Date(date).toISOString();
+}
 /**
  * @swagger
  * /api/letters/pending:
@@ -150,6 +189,11 @@ router.get('/pending', auth, roleAuth('referee'), async (req, res) => {
       ],
       order: [['created_at', 'ASC']] // Oldest requests first
     });
+    console.log('Raw pending letters:', pendingLetters.map(l => ({
+      id: l.id,
+      created_at: l.createdAt,
+      datatype: typeof l.createdAt
+    }))); 
 
     res.json({
       pending_requests: pendingLetters.map(letter => ({
@@ -162,7 +206,7 @@ router.get('/pending', auth, roleAuth('referee'), async (req, res) => {
           achievements: letter.applicant_data.achievements
         },
         preferences: letter.generation_parameters,
-        created_at: letter.created_at,
+        created_at: formatDate(letter.createdAt),
         deadline: letter.generation_parameters?.deadline
       }))
     });
@@ -225,7 +269,7 @@ router.post('/:id/accept', auth, roleAuth('referee'), async (req, res) => {
       }
     });
 
-    if(!letter) {
+    if (!letter) {
       return res.status(404).json({ error: 'Letter request not found or already processed' });
     }
 
@@ -395,7 +439,7 @@ router.post('/:id/generate-draft', auth, roleAuth('referee'), async (req, res) =
       where: {
         id: req.params.id,
         referee_id: req.user.id,
-        status: 'requested'
+        status: 'in_progress'
       }
     });
 
@@ -446,7 +490,7 @@ Additional Context: ${JSON.stringify(extra_context, null, 2)}
 
 ${filledTemplate}`;
 
-    // ✅ Log for debugging
+    // Log for debugging
     console.log('Template ID:', template_id);
     console.log('Extra context:', extra_context);
     console.log('Letter:', letter);
@@ -454,12 +498,24 @@ ${filledTemplate}`;
 
     // Generate draft with AI
     let generatedText;
+    // try {
+    //   console.log('Generating with Ollama...');
+    //   generatedText = await generateWithOllama(prompt);
+    //   console.log('Generated text:', generatedText);
+    // } catch (generationError) {
+    //   console.error('Ollama Generation Error:', generationError.message);
+    //   return res.status(500).json({ error: 'Failed to generate letter with Ollama.' });
+    // }
     try {
-      console.log('Generating with Ollama...');
-      generatedText = await generateWithOllama(prompt);
-      console.log('Generated text:', generatedText);
+      console.log('Generating with OpenAI...');
+      generatedText = await generateWithOpenAI(prompt, {
+        model: 'gpt-3.5-turbo', // or 'gpt-4' for higher quality
+        maxTokens: 800,
+        temperature: 0.7
+      });
+      console.log('Generated successfully');
     } catch (generationError) {
-      console.error('Ollama Generation Error:', generationError.message);
+      console.error('OpenAI Generation Error:', generationError.message);
       return res.status(500).json({ error: 'Failed to generate letter with Ollama.' });
     }
 
@@ -469,29 +525,52 @@ ${filledTemplate}`;
     }
 
     // Update letter with draft content
+    // await letter.update({
+    //   template_id,
+    //   letter_content: generatedText,
+    //   model_used: 'ollama-llama2',
+    //   status: 'draft',
+    //   generation_attempts: (letter.generation_attempts || 0) + 1,
+    //   generation_parameters: {
+    //     ...letter.generation_parameters,
+    //     extra_context
+    //   }
+    // });
     await letter.update({
       template_id,
-      letter_content: generatedText,
-      model_used: 'ollama-llama2',
+      letter_content: generatedText.content,
+      model_used: generatedText.model,
       status: 'draft',
       generation_attempts: (letter.generation_attempts || 0) + 1,
       generation_parameters: {
         ...letter.generation_parameters,
-        extra_context
+        extra_context,
+        tokens_used: generatedText.usage?.total_tokens
       }
     });
 
     res.json({
       message: 'Draft generated successfully',
+      // letter: {
+      //   id: letter.id,
+      //   content: generatedText,
+      //   status: 'draft',
+      //   applicant: {
+      //     name: applicantName,
+      //     program: letter.applicant_data.program
+      //   },
+      //   generated_at: letter.updated_at
+      // }
       letter: {
         id: letter.id,
-        content: generatedText,
+        content: generatedText.content,
         status: 'draft',
         applicant: {
           name: applicantName,
           program: letter.applicant_data.program
         },
-        generated_at: letter.updated_at
+        generated_at: letter,
+        // tokens_used: generatedText.usage?.total_tokens
       }
     });
   } catch (err) {
@@ -816,7 +895,7 @@ router.get('/', auth, async (req, res) => {
           institution: letter.referee.institution
         } : null,
         template: letter.template,
-        created_at: letter.created_at,
+        created_at: letter.createdAt,
         completed_at: letter.status === 'completed' ? letter.updated_at : null,
         // Only show content to referee or if completed
         content: (req.user.role === 'referee' || letter.status === 'completed') ?
@@ -951,7 +1030,7 @@ function fillTemplate(template, values) {
 }
 
 // ------------------------------------------------
-// LEGACY/ADMIN ROUTES (Optional)
+// LEGACY/ADMIN ROUTES 
 // ------------------------------------------------
 
 // DELETE - for admin or cleanup

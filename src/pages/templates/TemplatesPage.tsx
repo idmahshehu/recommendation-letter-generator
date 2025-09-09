@@ -49,7 +49,7 @@ export default function TemplatesPage() {
                 // Fetch raw templates
                 const { data } = await api.get('/templates', { params });
                 let raw: Template[] = data?.templates ?? [];
-                
+
 
                 const byId = new Map(raw.map(t => [t.id, t]));
                 const unique = [...byId.values()];
@@ -78,7 +78,7 @@ export default function TemplatesPage() {
 
         const creatorId = template.createdBy || template.created_by;
         const isSystem = template.isSystemTemplate ?? template.is_system_template;
-        
+
         // System templates are not "mine"
         if (creatorId === null || creatorId === undefined || isSystem) {
             return false;
@@ -119,12 +119,23 @@ export default function TemplatesPage() {
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
                 {/* Header */}
                 <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                    <div>
-                        <h1 className="text-2xl font-semibold">Templates</h1>
+                    <div className="mb-3">
+                        <div className="flex items-center space-x-2 text-sm text-gray-600 mb-4">
+                            <button onClick={() => navigate('/dashboard')} className="text-blue-600 hover:underline">
+                                Dashboard
+                            </button>
+                            <span>›</span>
+                            <button onClick={() => navigate('/templates')} className="text-blue-600 hover:underline">
+                                Templates
+                            </button>
+                        </div>
+
+                        <h1 className="text-3xl font-bold text-gray-900 mb-2">Template</h1>
                     </div>
+
                     <button
                         onClick={() => navigate('/templates/new')}
-                        className="px-4 py-2 rounded-xl bg-black text-white"
+                        className="px-4 py-2 rounded-xl font-medium bg-blue-600 text-white"
                     >
                         New Template
                     </button>
@@ -137,7 +148,7 @@ export default function TemplatesPage() {
                             <button
                                 key={c}
                                 onClick={() => setCategory(c)}
-                                className={`px-3 py-1.5 rounded-lg border text-sm ${category === c ? 'bg-black text-white border-black' : 'bg-white text-gray-700 hover:bg-gray-100'
+                                className={`px-3 py-1.5 rounded-lg border text-sm ${category === c ? 'font-medium bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 hover:bg-gray-100'
                                     }`}
                             >
                                 {c === 'all' ? 'All' : c[0].toUpperCase() + c.slice(1)}
@@ -177,17 +188,17 @@ export default function TemplatesPage() {
                             const mine = isMine(t, user?.id);
 
                             return (
-                                <li key={t.id} className="rounded-xl border bg-white p-4 flex flex-col shadow-sm hover:shadow-md transition">
+                                <li key={t.id} className="rounded-xl border bg-white p-4 flex flex-col justify-between shadow-sm hover:shadow-md transition">
                                     {/* Header */}
                                     <div className="flex items-start justify-between">
                                         <h3 className="font-semibold text-lg">{t.name}</h3>
                                         {(t.isSystemTemplate ?? t.is_system_template) ? (
                                             <span className="px-2 py-0.5 rounded text-xs bg-gray-200 text-gray-700">
-                                                System 🔒
+                                                Default
                                             </span>
                                         ) : mine ? (
                                             <span className="px-2 py-0.5 rounded text-xs bg-emerald-100 text-emerald-800">
-                                                Mine
+                                                Custom
                                             </span>
                                         ) : (
                                             <span className="px-2 py-0.5 rounded text-xs bg-indigo-100 text-indigo-800">
@@ -198,7 +209,7 @@ export default function TemplatesPage() {
 
                                     {/* Category */}
                                     <span
-                                        className={`mt-2 inline-block px-2 py-0.5 rounded text-xs ${badgeColor(
+                                        className={`mt-2 inline-block px-2 py-0.5 rounded text-xs w-fit ${badgeColor(
                                             t.category
                                         )}`}
                                     >
@@ -211,7 +222,7 @@ export default function TemplatesPage() {
                                     )}
 
                                     {/* Tags (System / Custom) */}
-                                    <div className="flex items-center gap-2 text-xs text-gray-600 mt-3">
+                                    {/* <div className="flex items-center gap-2 text-xs text-gray-600 mt-3">
                                         <span
                                             className={`px-2 py-0.5 rounded ${(t.isSystemTemplate ?? t.is_system_template)
                                                 ? "bg-indigo-100 text-indigo-700"
@@ -220,22 +231,35 @@ export default function TemplatesPage() {
                                         >
                                             {(t.isSystemTemplate ?? t.is_system_template) ? "System" : "Custom"}
                                         </span>
-                                    </div>
+                                    </div> */}
 
                                     {/* Actions */}
-                                    <div className="mt-4 flex gap-2">
+                                    <div className="mt-4 flex justify-between gap-2 items-center">
                                         <button
                                             onClick={() => setPreview(t)}
                                             className="px-3 py-2 rounded-lg border text-sm hover:bg-gray-50 transition"
                                         >
                                             Preview
                                         </button>
-                                        <button
+                                        <div className="flex space-x-2">
+                                            {/* Only show edit/delete for user's own templates */}
+                                            {!t.isSystemTemplate && (
+                                                <>
+                                                    <button className="px-3 py-2 rounded-lg border text-sm text-blue-600 hover:text-blue-700">
+                                                        Edit
+                                                    </button>
+                                                    <button className="px-3 py-2 rounded-lg border text-sm text-red-600 hover:text-red-700">
+                                                        Delete
+                                                    </button>
+                                                </>
+                                            )}
+                                        </div>
+                                        {/* <button
                                             onClick={() => handleUse(t)}
-                                            className="px-3 py-2 rounded-lg bg-black text-white text-sm hover:bg-gray-800 transition"
+                                            className="px-3 py-2 rounded-lg font-medium bg-blue-600 text-white text-white text-sm hover:bg-gray-800 transition"
                                         >
                                             Use
-                                        </button>
+                                        </button> */}
                                     </div>
                                 </li>
                             );
@@ -254,7 +278,7 @@ export default function TemplatesPage() {
                                 <h4 className="font-semibold">{preview.name}</h4>
                                 <span className={`px-2 py-0.5 rounded text-xs ${badgeColor(preview.category)}`}>{preview.category}</span>
                             </div>
-                            <button onClick={() => setPreview(null)} className="px-3 py-1.5 rounded-lg bg-black text-white text-sm">Close</button>
+                            <button onClick={() => setPreview(null)} className="px-3 py-1.5 rounded-lg bg-blue-500 text-white text-sm">Close</button>
                         </div>
                         <div className="p-4 max-h-[70vh] overflow-auto">
                             <pre className="whitespace-pre-wrap text-sm font-mono leading-6">{preview.promptTemplate}</pre>
@@ -268,7 +292,7 @@ export default function TemplatesPage() {
                             )}
                         </div>
                         <div className="p-4 border-t flex justify-end">
-                            <button onClick={() => handleUse(preview)} className="px-4 py-2 rounded-lg bg-black text-white text-sm">
+                            <button onClick={() => handleUse(preview)} className="px-4 py-2 rounded-lg font-medium bg-blue-600 text-white text-white text-sm">
                                 Use this template
                             </button>
                         </div>
@@ -394,7 +418,7 @@ function badgeColor(cat: Template['category']) {
 //           <div className="flex gap-3">
 //             <button
 //               onClick={() => navigate('/templates/new')}
-//               className="px-4 py-2 rounded-2xl bg-black text-white shadow hover:opacity-90"
+//               className="px-4 py-2 rounded-2xl font-medium bg-blue-600 text-white text-white shadow hover:opacity-90"
 //             >
 //               New Template
 //             </button>
@@ -481,7 +505,7 @@ function badgeColor(cat: Template['category']) {
 //                   </button>
 //                   <button
 //                     onClick={() => handleUseTemplate(t)}
-//                     className="px-3 py-2 rounded-xl bg-black text-white text-sm"
+//                     className="px-3 py-2 rounded-xl font-medium bg-blue-600 text-white text-white text-sm"
 //                   >
 //                     Use template
 //                   </button>

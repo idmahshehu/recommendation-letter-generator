@@ -2,36 +2,21 @@ import React from 'react'
 import { AuthProvider } from '../context/AuthContext';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { LoginPage, RegisterPage } from '../pages/auth';
-import { DashboardPage } from '../pages/dashboard';
-import { LettersPage } from '../pages/letters';
+import DashboardPage from '../pages/dashboard/DashboardPage';
+import LettersPage from '../pages/letters/LettersPage';
 import ProtectedRoute from './ProtectedRoute';
 // import LetterForm from '../components/letters/LetterForm';
 import GenerateLetter from '../pages/letters/GenerateLetter';
 import EditLetterPage from '../pages/letters/EditLetterPage';
 import PublicRoute from './PublicRoute';
-import { TemplatesPage } from '../pages/templates';
+import TemplatesPage from '../pages/templates/TemplatesPage';
 import ApplicantDashboard from '../pages/dashboard/ApplicantDashboard';
 import TemplateCreate from '../pages/templates/TemplateCreate';
 import LetterRequest from '../pages/letters/LetterRequest';
+import LetterDetailPage from '../pages/letters/LetterDetailPage';
 
 function AppRoutes() {
   return (
-    // <Routes>
-    //   <Route path="/login" element={<LoginPage />} />
-    //   <Route path="/register" element={<RegisterPage />} />
-    //   <Route
-    //     path="/dashboard"
-    //     element={
-    //       <ProtectedRoute>
-    //         <DashboardPage />
-    //       </ProtectedRoute>
-    //     }
-    //   />
-    //   <Route path="/letters" element={<LettersPage />} />
-    //   <Route path="/letters/:id/generate" element={<GenerateLetter />} />
-    //   <Route path="/letters/:id/edit" element={<EditLetterPage />} />
-    // </Routes>
-
     <Routes>
       {/* Public Routes */}
       <Route path="/login" element={
@@ -65,11 +50,11 @@ function AppRoutes() {
         </ProtectedRoute>
       } />
 
-      {/* <Route path="/letters/:id" element={
+      <Route path="/letters/:id" element={
         <ProtectedRoute>
           <LetterDetailPage />
         </ProtectedRoute>
-      } /> */}
+      } />
 
       <Route path="/letters/:id/edit" element={
         <ProtectedRoute>
@@ -88,7 +73,7 @@ function AppRoutes() {
           <TemplateCreate />
         </ProtectedRoute>
       } />
-      
+
       <Route path="/letters/new" element={
         <ProtectedRoute allowedRoles={['applicant']}>
           <LetterRequest />

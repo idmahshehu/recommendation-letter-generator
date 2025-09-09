@@ -77,6 +77,8 @@ export const LettersPage: React.FC = () => {
         try {
           const pendingResponse = await api.get('/letters/pending');
           setPendingRequests(pendingResponse.data.pending_requests || []);
+          console.log('Pending requests data:', pendingRequests);
+          console.log('Pending requests data:', pendingResponse.data.pending_requests);
         } catch (pendingError) {
           setPendingRequests([]);
         }
@@ -98,7 +100,7 @@ export const LettersPage: React.FC = () => {
 
     if (selectedStatus !== 'all') {
       if (selectedStatus === 'pending') {
-        filtered = filtered.filter(letter => 
+        filtered = filtered.filter(letter =>
           letter.status === 'requested' || letter.status === 'in_progress'
         );
       } else {
@@ -120,20 +122,20 @@ export const LettersPage: React.FC = () => {
   const handleLetterAction = async (letterId: string, action: 'accept' | 'reject', reason?: string) => {
     try {
       setActionLoading(`${action}-${letterId}`);
-      
+
       const endpoint = action === 'accept' ? `/letters/${letterId}/accept` : `/letters/${letterId}/reject`;
       const payload = action === 'reject' && reason ? { reason } : {};
-      
+
       await api.post(endpoint, payload);
-      
+
       // Remove from pending requests
       setPendingRequests(prev => prev.filter(req => req.id !== letterId));
-      
+
       // Refresh all letters
       const lettersResponse = await api.get('/letters');
       const letters = lettersResponse.data.letters || [];
       setAllLetters(letters);
-      
+
     } catch (err: any) {
       console.error(`Error ${action}ing letter:`, err);
       setError(err.response?.data?.error || `Failed to ${action} letter`);
@@ -146,7 +148,7 @@ export const LettersPage: React.FC = () => {
     const reason = window.prompt(
       `Why are you rejecting ${applicantName}'s request?\n\nThis message will be sent to the applicant (optional):`
     );
-    
+
     if (reason === null) return;
     handleLetterAction(letterId, 'reject', reason);
   };
@@ -229,6 +231,45 @@ export const LettersPage: React.FC = () => {
     }
   };
 
+// Replace your current parseDate function with this one:
+const parseDate = (dateString: string | null | undefined): string => {
+  if (!dateString || dateString === null || dateString === undefined || dateString === '') {
+    return 'No date available';
+  }
+
+  try {
+    // Convert to string in case it's not already
+    const dateStr = String(dateString).trim();
+    
+    // Handle simple date format (YYYY-MM-DD)
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+      const date = new Date(dateStr + 'T00:00:00.000Z');
+      return isNaN(date.getTime()) ? 'Invalid date' : date.toLocaleDateString();
+    }
+    
+    // Handle full timestamp format: "2025-07-30 22:32:06.701+02"
+    if (dateStr.includes(' ')) {
+      let isoString = dateStr.replace(' ', 'T');
+      
+      // Fix incomplete timezone format (+02 -> +02:00)
+      if (/[+-]\d{2}$/.test(isoString)) {
+        isoString += ':00';
+      }
+      
+      const date = new Date(isoString);
+      return isNaN(date.getTime()) ? 'Invalid date' : date.toLocaleDateString();
+    }
+    
+    // Try parsing as-is for other formats
+    const date = new Date(dateStr);
+    return isNaN(date.getTime()) ? 'Invalid date' : date.toLocaleDateString();
+    
+  } catch (error) {
+    console.warn('Date parsing error:', error);
+    return 'Invalid date';
+  }
+};
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -258,7 +299,7 @@ export const LettersPage: React.FC = () => {
   return (
     <div className="bg-gray-50 min-h-screen">
       <Navigation user={user} />
-      
+
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-8">
@@ -283,11 +324,11 @@ export const LettersPage: React.FC = () => {
                         <div>
                           <h3 className="font-medium text-gray-900">{request.applicant.name}</h3>
                           <p className="text-sm text-gray-600">{request.applicant.email}</p>
-                          <p className="text-sm text-gray-700 mt-1">{request.applicant.program}</p>
+                          <p className="text-sm text-gray-700 mt-1">Program: {request.applicant.program}</p>
                           <p className="text-sm text-gray-700 mt-1">Goal: {request.applicant.goal}</p>
                         </div>
                         <div className="text-right text-xs text-gray-500">
-                          Requested: {new Date(request.created_at).toLocaleDateString()}
+                          Requested: {parseDate(request.created_at)}
                           {request.preferences.deadline && (
                             <div className="text-red-600 font-medium">
                               Due: {new Date(request.preferences.deadline).toLocaleDateString()}
@@ -295,7 +336,7 @@ export const LettersPage: React.FC = () => {
                           )}
                         </div>
                       </div>
-                      
+
                       {request.applicant.achievements && request.applicant.achievements.length > 0 && (
                         <div className="mt-3">
                           <p className="text-xs text-gray-500 mb-1">Key achievements:</p>
@@ -309,13 +350,13 @@ export const LettersPage: React.FC = () => {
                           </ul>
                         </div>
                       )}
-                      
-                      <div className="mt-3 flex space-x-4 text-xs text-gray-600">
+
+                      {/* <div className="mt-3 flex space-x-4 text-xs text-gray-600">
                         <span>Tone: {request.preferences.tone || 'Not specified'}</span>
                         <span>Length: {request.preferences.length || 'Not specified'}</span>
-                      </div>
+                      </div> */}
                     </div>
-                    
+
                     <div className="ml-4 flex flex-col space-y-2">
                       <button
                         onClick={() => handleLetterAction(request.id, 'accept')}
@@ -347,11 +388,10 @@ export const LettersPage: React.FC = () => {
                 <button
                   key={status}
                   onClick={() => setSelectedStatus(status)}
-                  className={`px-3 py-2 rounded-md text-sm font-medium ${
-                    selectedStatus === status
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
+                  className={`px-3 py-2 rounded-md text-sm font-medium ${selectedStatus === status
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
                 >
                   {status === 'all' ? 'All' : getStatusLabel(status)}
                   {status === 'all' && ` (${allLetters.length})`}
@@ -360,7 +400,7 @@ export const LettersPage: React.FC = () => {
                 </button>
               ))}
             </div>
-            
+
             <div className="relative">
               <input
                 type="text"
@@ -383,7 +423,7 @@ export const LettersPage: React.FC = () => {
               <div className="text-gray-400 text-4xl mb-4">📋</div>
               <h3 className="text-lg font-medium text-gray-900 mb-2">No letters found</h3>
               <p className="text-gray-500">
-                {selectedStatus === 'all' 
+                {selectedStatus === 'all'
                   ? "You haven't received any letter requests yet."
                   : `No letters with status: ${getStatusLabel(selectedStatus)}`
                 }
@@ -433,13 +473,13 @@ export const LettersPage: React.FC = () => {
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {letter.generation_parameters?.deadline 
+                        {letter.generation_parameters?.deadline
                           ? new Date(letter.generation_parameters.deadline).toLocaleDateString()
                           : 'No deadline'
                         }
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {new Date(letter.created_at).toLocaleDateString()}
+                        {parseDate(letter.created_at)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         {getActionButton(letter)}

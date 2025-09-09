@@ -7,7 +7,7 @@ const LetterRequest: React.FC = () => {
   const { token, user } = useAuth();
   const navigate = useNavigate();
 
-  const [refereeId, setRefereeId] = useState("");
+  const [refereeemail, setRefereeemail] = useState("");
   const [firstName, setFirstName] = useState(user?.firstName ?? "");
   const [lastName, setLastName] = useState(user?.lastName ?? "");
   const [email, setEmail] = useState(user?.email ?? "");
@@ -20,7 +20,7 @@ const LetterRequest: React.FC = () => {
   const [error, setError] = useState<string>("");
 
   const validate = () => {
-    if (!refereeId.trim()) return "Referee ID is required.";
+    if (!refereeemail.trim()) return "Referee ID is required.";
     if (!firstName.trim()) return "First name is required.";
     if (!lastName.trim()) return "Last name is required.";
     if (!email.trim()) return "Email is required.";
@@ -54,7 +54,7 @@ const LetterRequest: React.FC = () => {
       .filter(Boolean);
 
     const payload = {
-      referee_id: refereeId,
+      referee_email: refereeemail.trim(),
       applicant_data: {
         firstName,
         lastName,
@@ -98,11 +98,11 @@ const LetterRequest: React.FC = () => {
           <div>
             <label className="block text-sm font-medium text-gray-700">Referee ID (UUID) *</label>
             <input
-              type="text"
-              value={refereeId}
-              onChange={(e) => setRefereeId(e.target.value)}
-              placeholder="266d8b9d-e939-440b-85b9-be40f0315b13"
-              className="mt-1 w-full rounded-lg border px-3 py-2"
+              type="email"
+              value={refereeemail}
+              onChange={(e) => setRefereeemail(e.target.value)}
+              placeholder="referee@york.citycollege.eu"
+              className="mt-1 w-full rounded -lg border px-3 py-2"
               required
             />
             <p className="mt-1 text-xs text-gray-500">
