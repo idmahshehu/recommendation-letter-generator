@@ -9,6 +9,7 @@ import {
     CircularProgress
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
+import { User } from '../../context/AuthContext';
 
 interface LoginFormProps {
     onLogin?: (email: string, password: string) => Promise<void>;
@@ -29,6 +30,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onLogin }) => {
         try {
             if (onLogin) {
                 await onLogin(email, password);
+                navigate("/");
             } else {
                 // Fallback if onLogin is not provided
                 console.log('Login attempt:', { email, password });

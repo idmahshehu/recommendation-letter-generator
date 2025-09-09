@@ -21,7 +21,7 @@ module.exports = {
       primaryKey: true
     });
 
-    // ✅ Re-add PRIMARY KEY constraint explicitly
+    // Re-add PRIMARY KEY constraint explicitly
     await queryInterface.sequelize.query(`
     ALTER TABLE "Users" ADD PRIMARY KEY ("id");
     `);
