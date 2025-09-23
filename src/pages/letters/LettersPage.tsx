@@ -58,6 +58,10 @@ export const LettersPage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState<string>('');
   const { token, user } = useAuth();
   const navigate = useNavigate();
+  const [page, setPage] = useState(1);
+  const [limit] = useState(10);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -68,10 +72,17 @@ export const LettersPage: React.FC = () => {
         setError('');
 
         // Get all letters
-        const lettersResponse = await api.get('/letters');
+        const lettersResponse = await api.get('/letters', {
+          params: { page, limit }
+        });
         const letters = lettersResponse.data.letters || [];
         setAllLetters(letters);
         setFilteredLetters(letters);
+
+        if (lettersResponse.data.pagination) {
+          setTotalPages(lettersResponse.data.pagination.totalPages || 1);
+          setTotalCount(lettersResponse.data.pagination.total || 0);  
+        }
 
         // Get pending requests
         try {
@@ -92,7 +103,7 @@ export const LettersPage: React.FC = () => {
     };
 
     fetchData();
-  }, [token]);
+  }, [token, page]);
 
   // Filter letters based on status and search term
   useEffect(() => {
@@ -132,7 +143,7 @@ export const LettersPage: React.FC = () => {
       setPendingRequests(prev => prev.filter(req => req.id !== letterId));
 
       // Refresh all letters
-      const lettersResponse = await api.get('/letters');
+      const lettersResponse = await api.get('/letters', { params: { page, limit } });
       const letters = lettersResponse.data.letters || [];
       setAllLetters(letters);
 
@@ -231,44 +242,44 @@ export const LettersPage: React.FC = () => {
     }
   };
 
-// Replace your current parseDate function with this one:
-const parseDate = (dateString: string | null | undefined): string => {
-  if (!dateString || dateString === null || dateString === undefined || dateString === '') {
-    return 'No date available';
-  }
+  // Replace your current parseDate function with this one:
+  const parseDate = (dateString: string | null | undefined): string => {
+    if (!dateString || dateString === null || dateString === undefined || dateString === '') {
+      return 'No date available';
+    }
 
-  try {
-    // Convert to string in case it's not already
-    const dateStr = String(dateString).trim();
-    
-    // Handle simple date format (YYYY-MM-DD)
-    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-      const date = new Date(dateStr + 'T00:00:00.000Z');
-      return isNaN(date.getTime()) ? 'Invalid date' : date.toLocaleDateString();
-    }
-    
-    // Handle full timestamp format: "2025-07-30 22:32:06.701+02"
-    if (dateStr.includes(' ')) {
-      let isoString = dateStr.replace(' ', 'T');
-      
-      // Fix incomplete timezone format (+02 -> +02:00)
-      if (/[+-]\d{2}$/.test(isoString)) {
-        isoString += ':00';
+    try {
+      // Convert to string in case it's not already
+      const dateStr = String(dateString).trim();
+
+      // Handle simple date format (YYYY-MM-DD)
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+        const date = new Date(dateStr + 'T00:00:00.000Z');
+        return isNaN(date.getTime()) ? 'Invalid date' : date.toLocaleDateString();
       }
-      
-      const date = new Date(isoString);
+
+      // Handle full timestamp format: "2025-07-30 22:32:06.701+02"
+      if (dateStr.includes(' ')) {
+        let isoString = dateStr.replace(' ', 'T');
+
+        // Fix incomplete timezone format (+02 -> +02:00)
+        if (/[+-]\d{2}$/.test(isoString)) {
+          isoString += ':00';
+        }
+
+        const date = new Date(isoString);
+        return isNaN(date.getTime()) ? 'Invalid date' : date.toLocaleDateString();
+      }
+
+      // Try parsing as-is for other formats
+      const date = new Date(dateStr);
       return isNaN(date.getTime()) ? 'Invalid date' : date.toLocaleDateString();
+
+    } catch (error) {
+      console.warn('Date parsing error:', error);
+      return 'Invalid date';
     }
-    
-    // Try parsing as-is for other formats
-    const date = new Date(dateStr);
-    return isNaN(date.getTime()) ? 'Invalid date' : date.toLocaleDateString();
-    
-  } catch (error) {
-    console.warn('Date parsing error:', error);
-    return 'Invalid date';
-  }
-};
+  };
 
   if (loading) {
     return (
@@ -394,7 +405,7 @@ const parseDate = (dateString: string | null | undefined): string => {
                     }`}
                 >
                   {status === 'all' ? 'All' : getStatusLabel(status)}
-                  {status === 'all' && ` (${allLetters.length})`}
+                  {status === 'all' && ` (${totalCount})`}
                   {status !== 'all' && status === 'pending' && ` (${allLetters.filter(l => l.status === 'requested' || l.status === 'in_progress').length})`}
                   {status !== 'all' && status !== 'pending' && ` (${allLetters.filter(l => l.status === status).length})`}
                 </button>
@@ -490,6 +501,27 @@ const parseDate = (dateString: string | null | undefined): string => {
               </table>
             </div>
           )}
+          <div className="flex justify-between items-center mt-4">
+            <button
+              onClick={() => setPage((p) => Math.max(p - 1, 1))}
+              disabled={page === 1}
+              className="px-3 py-1 rounded bg-gray-200 text-sm disabled:opacity-50"
+            >
+              Previous
+            </button>
+
+            <span className="text-sm text-gray-700">
+              Page {page} of {totalPages}
+            </span>
+
+            <button
+              onClick={() => setPage((p) => Math.min(p + 1, totalPages))}
+              disabled={page === totalPages}
+              className="px-3 py-1 rounded bg-gray-200 text-sm disabled:opacity-50"
+            >
+              Next
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -10,7 +10,7 @@ const generateWithOpenAI = async (prompt, options = {}) => {
     console.log('Generating with OpenAI...');
     
     const completion = await openai.chat.completions.create({
-      model: options.model || 'gpt-3.5-turbo', // 'gpt-4' for better quality
+      model: options.model || 'gpt-3.5-turbo',
       messages: [
         {
           role: 'system',
@@ -22,8 +22,8 @@ const generateWithOpenAI = async (prompt, options = {}) => {
         }
       ],
       max_tokens: options.maxTokens || 800,
-      temperature: options.temperature || 0.7, // Controls creativity (0-1)
-      presence_penalty: 0.1, // Reduces repetition
+      temperature: options.temperature || 0.7, 
+      presence_penalty: 0.1, 
       frequency_penalty: 0.1
     });
 
@@ -42,7 +42,6 @@ const generateWithOpenAI = async (prompt, options = {}) => {
   } catch (error) {
     console.error('OpenAI API Error:', error.message);
     
-    // Handle specific errors for better UX
     if (error.code === 'insufficient_quota') {
       throw new Error('OpenAI quota exceeded. Please check your billing.');
     }

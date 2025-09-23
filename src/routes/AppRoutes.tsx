@@ -14,6 +14,8 @@ import ApplicantDashboard from '../pages/dashboard/ApplicantDashboard';
 import TemplateCreate from '../pages/templates/TemplateCreate';
 import LetterRequest from '../pages/letters/LetterRequest';
 import LetterDetailPage from '../pages/letters/LetterDetailPage';
+import LetterAnalyzer from '../pages/templates/LetterAnalyzer';
+import ApplicantLetters from '../pages/letters/ApplicantLetters';
 
 function AppRoutes() {
   return (
@@ -39,25 +41,31 @@ function AppRoutes() {
       } /> */}
 
       <Route path="/letters" element={
-        <ProtectedRoute>
+        <ProtectedRoute allowedRoles={['referee']}>
           <LettersPage />
         </ProtectedRoute>
       } />
 
+      <Route path="/view-letters" element={
+        <ProtectedRoute allowedRoles={['applicant']}>
+          <ApplicantLetters />
+        </ProtectedRoute>
+      } />
+
       <Route path="/letters/:id/generate" element={
-        <ProtectedRoute>
+        <ProtectedRoute allowedRoles={['referee']}>
           <GenerateLetter />
         </ProtectedRoute>
       } />
 
       <Route path="/letters/:id" element={
-        <ProtectedRoute>
+        <ProtectedRoute allowedRoles={['referee']}>
           <LetterDetailPage />
         </ProtectedRoute>
       } />
 
       <Route path="/letters/:id/edit" element={
-        <ProtectedRoute>
+        <ProtectedRoute allowedRoles={['referee']}>
           <EditLetterPage />
         </ProtectedRoute>
       } />
@@ -65,6 +73,11 @@ function AppRoutes() {
       <Route path="/templates" element={
         <ProtectedRoute allowedRoles={['referee']}>
           <TemplatesPage />
+        </ProtectedRoute>
+      } />
+      <Route path="/templates/generate-template" element={
+        <ProtectedRoute allowedRoles={['referee']}>
+          <LetterAnalyzer />
         </ProtectedRoute>
       } />
 

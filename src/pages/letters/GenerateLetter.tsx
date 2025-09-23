@@ -1,180 +1,3 @@
-// import React, { useEffect, useState } from 'react';
-// import { useParams, useNavigate } from 'react-router-dom';
-// import axios from 'axios';
-// import { api } from '../../services/api';
-
-// const GenerateLetter = () => {
-//     const { id } = useParams();
-//     const navigate = useNavigate();
-
-//     const [loading, setLoading] = useState(true);
-//     const [letter, setLetter] = useState<any>(null);
-//     const [templates, setTemplates] = useState<any[]>([]);
-//     const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
-
-//     const [context, setContext] = useState({
-//         relationship: '',
-//         duration: '',
-//         strengths: '',
-//         specific_examples: '',
-//         additional_context: ''
-//     });
-
-//     useEffect(() => {
-//         if (!id) return;
-//         const fetchData = async () => {
-//             setLoading(true);
-//             try {
-
-//                 const [letterRes, templateRes] = await Promise.all([
-//                     api.get(`/letters/${id}`),
-//                     api.get(`/templates`),
-//                 ]);
-
-//                 setLetter(letterRes.data);
-//                 console.log("Letter response:", letterRes.data);
-//                 setTemplates(templateRes.data.templates || []);
-//                 console.log('Templates:', templateRes.data.templates);
-//                 setSelectedTemplateId(letterRes.data.template?.id || '');
-//             } catch (err) {
-//                 console.error('Failed to fetch data:', err);
-//             } finally {
-//                 setLoading(false);
-//             }
-//         };
-
-//         fetchData();
-//     }, [id]);
-
-//     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-//         setContext({ ...context, [e.target.name]: e.target.value });
-//     };
-
-//     const handleSubmit = async () => {
-//         try {
-//             await api.post(`/letters/${id}/generate-draft`, {
-//                 template_id: selectedTemplateId,
-//                 extra_context: context
-//             });
-
-//             alert('Draft generated successfully!');
-//             navigate('/dashboard');
-//         } catch (err) {
-//             console.error('Error generating draft:', err);
-//             alert('Failed to generate draft');
-//         }
-//     };
-
-//     console.log(context);
-
-//     if (loading) return <div className="p-6">Loading...</div>;
-
-//     return (
-//         <div className="p-6 max-w-2xl mx-auto">
-//             <h1 className="text-2xl font-bold mb-4"> Generate Draft for {letter?.applicant_data?.firstName} {letter?.applicant_data?.lastName}</h1>
-
-//             {/* Applicant Data */}
-//             <div className="flex-1 mr-4">
-//                 <p className="font-medium text-gray-900">{letter?.applicant_data?.name}</p>
-//                 <p className="text-sm text-gray-600">{letter?.applicant_data?.program}</p>
-//                 <p className="text-sm text-gray-700 mt-1">{letter?.applicant_data?.goal}</p>
-//                 {/* {request.preferences.deadline && (
-//                     <p className="text-xs text-red-600 mt-1">
-//                         Due: {new Date(request.preferences.deadline).toLocaleDateString()}
-//                     </p>
-//                 )} */}
-//                 {letter?.applicant_data?.achievements?.length > 0 && (
-//                     <div className="mt-2">
-//                         <p className="text-xs text-gray-500">Key achievements:</p>
-//                         <ul className="text-xs text-gray-600 ml-2">
-//                             {letter?.applicant_data?.achievements
-//                                 ?.slice(0, 2)
-//                                 .map((achievement: string, idx: number) => (
-//                                     <li key={idx}>• {achievement}</li>
-//                                 ))}
-//                         </ul>
-//                     </div>
-//                 )}
-
-//             </div>
-
-//             {/* Select Template */}
-//             <label className="block font-semibold mt-4">Template</label>
-//             <select
-//                 value={selectedTemplateId}
-//                 onChange={(e) => setSelectedTemplateId(e.target.value)}
-//                 className="w-full border p-2 rounded"
-//             >
-//                 <option value="">Select a template</option>
-//                 {templates.map((tpl) => (
-//                     <option key={tpl.id} value={tpl.id}>
-//                         {tpl.name}
-//                     </option>
-//                 ))}
-//             </select>
-
-//             {/* Form Inputs */}
-//             <label className="block font-semibold mt-4">Relationship</label>
-//             <input
-//                 name="relationship"
-//                 value={context.relationship}
-//                 onChange={handleChange}
-//                 className="w-full border p-2 rounded"
-//                 placeholder="e.g. student in my AI course"
-//             />
-
-//             <label className="block font-semibold mt-4">Duration</label>
-//             <input
-//                 name="duration"
-//                 value={context.duration}
-//                 onChange={handleChange}
-//                 className="w-full border p-2 rounded"
-//                 placeholder="e.g. 2 years"
-//             />
-
-//             <label className="block font-semibold mt-4">Strengths</label>
-//             <textarea
-//                 name="strengths"
-//                 value={context.strengths}
-//                 onChange={handleChange}
-//                 className="w-full border p-2 rounded"
-//                 placeholder="e.g. critical thinking, leadership"
-//             />
-
-//             <label className="block font-semibold mt-4">Specific Examples</label>
-//             <textarea
-//                 name="specific_examples"
-//                 value={context.specific_examples}
-//                 onChange={handleChange}
-//                 className="w-full border p-2 rounded"
-//                 placeholder="e.g. Led a group project with 95% accuracy"
-//             />
-
-//             <label className="block font-semibold mt-4">Additional Context</label>
-//             <textarea
-//                 name="additional_context"
-//                 value={context.additional_context}
-//                 onChange={handleChange}
-//                 className="w-full border p-2 rounded"
-//                 placeholder="Any other comments you want AI to consider"
-//             />
-
-//             <button
-//                 type="button"
-//                 onClick={handleSubmit}
-//                 disabled={!selectedTemplateId}
-//                 className="mt-6 bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 disabled:opacity-50"
-//             >
-//                 🚀 Generate Draft
-//             </button>
-//         </div>
-//     );
-// };
-
-// export default GenerateLetter;
-
-
-
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
@@ -205,6 +28,13 @@ interface Template {
     description: string;
 }
 
+interface AIModel {
+    id: string;
+    name: string;
+    description: string;
+    pricing: string;
+}
+
 interface Alert {
     message: string;
     type: 'success' | 'error';
@@ -218,7 +48,9 @@ const GenerateLetter = () => {
     const [generating, setGenerating] = useState(false);
     const [letter, setLetter] = useState<LetterData | null>(null);
     const [templates, setTemplates] = useState<Template[]>([]);
+    const [availableModels, setAvailableModels] = useState<AIModel[]>([]);
     const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
+    const [selectedModel, setSelectedModel] = useState<string>('llama-3.1-8b'); // Default to free model
     const [generatedContent, setGeneratedContent] = useState<string>('');
     const [showContent, setShowContent] = useState(false);
     const [alert, setAlert] = useState<Alert | null>(null);
@@ -246,13 +78,15 @@ const GenerateLetter = () => {
         const fetchData = async () => {
             setLoading(true);
             try {
-                const [letterRes, templateRes] = await Promise.all([
+                const [letterRes, templateRes, modelsRes] = await Promise.all([
                     api.get(`/letters/${id}`),
                     api.get(`/templates?includeUserTemplates=true`),
+                    api.get(`/letters/available-models`),
                 ]);
 
                 setLetter(letterRes.data);
                 setTemplates(templateRes.data.templates || []);
+                setAvailableModels(modelsRes.data.models || []);
                 setSelectedTemplateId(letterRes.data.template?.id || '');
 
                 // If letter already has content, show it
@@ -283,15 +117,18 @@ const GenerateLetter = () => {
     const validateForm = () => {
         const requiredFields = [
             { field: 'selectedTemplateId', label: 'Template' },
+            { field: 'selectedModel', label: 'AI Model' },
             { field: 'relationship', label: 'Relationship' },
             { field: 'duration', label: 'Duration' },
             { field: 'strengths', label: 'Strengths' }
         ];
 
         for (const { field, label } of requiredFields) {
-            const value = field === 'selectedTemplateId' ? selectedTemplateId : context[field as keyof typeof context];
+            const value = field === 'selectedTemplateId' ? selectedTemplateId : 
+                         field === 'selectedModel' ? selectedModel : 
+                         context[field as keyof typeof context];
             if (!value?.trim()) {
-                showAlert(`Please fill in the ${label} field.`, 'error');
+                showAlert(`Please select/fill in the ${label} field.`, 'error');
                 return false;
             }
         }
@@ -305,12 +142,11 @@ const GenerateLetter = () => {
         try {
             const response = await api.post(`/letters/${id}/generate-draft`, {
                 template_id: selectedTemplateId,
+                selected_model: selectedModel,
                 extra_context: context
             });
 
             navigate(`/letters/${id}/edit`, { state: { fromGenerate: true } });
-            // setGeneratedContent(response.data.letter.content);
-            // setShowContent(true);
             showAlert('Draft generated successfully!', 'success');
         } catch (err) {
             console.error('Error generating draft:', err);
@@ -399,7 +235,7 @@ const GenerateLetter = () => {
                 {/* Page Header */}
                 <div className="mb-8">
                     <h1 className="text-3xl font-bold text-gray-900 mb-2">Generate Recommendation Letter</h1>
-                    <p className="text-gray-600">Provide additional context to generate a personalized letter draft</p>
+                    <p className="text-gray-600">Provide additional context and choose your AI model to generate a personalized letter draft</p>
                 </div>
 
                 {/* Alert */}
@@ -413,52 +249,8 @@ const GenerateLetter = () => {
                 )}
 
                 <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-                    {/* Left Column - Form */}
+                    {/* Left Column - Sidebar */}
                     <div className="lg:col-span-1">
-                        {/* Applicant Information */}
-                        {/* <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-                            <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
-                                <div className="flex items-center space-x-3">
-                                    <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                                    </svg>
-                                    <h3 className="text-lg font-semibold text-gray-900">Applicant Information</h3>
-                                </div>
-                            </div>
-                            <div className="p-6">
-                                <div className="bg-gray-50 rounded-lg p-4 space-y-3">
-                                    <div className="flex justify-between">
-                                        <span className="font-medium text-gray-700">Name:</span>
-                                        <span className="text-gray-600">{letter.applicant_data.firstName} {letter.applicant_data.lastName}</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                        <span className="font-medium text-gray-700">Email:</span>
-                                        <span className="text-gray-600">{letter.applicant_data.email}</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                        <span className="font-medium text-gray-700">Program:</span>
-                                        <span className="text-gray-600">{letter.applicant_data.program}</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                        <span className="font-medium text-gray-700">Goal:</span>
-                                        <span className="text-gray-600">{letter.applicant_data.goal}</span>
-                                    </div>
-                                    {letter.applicant_data.achievements?.length > 0 && (
-                                        <div>
-                                            <span className="font-medium text-gray-700">Achievements:</span>
-                                            <ul className="mt-2 space-y-1">
-                                                {letter.applicant_data.achievements.map((achievement, idx) => (
-                                                    <li key={idx} className="text-gray-600 text-sm flex items-start">
-                                                        <span className="text-blue-500 mr-2">•</span>
-                                                        {achievement}
-                                                    </li>
-                                                ))}
-                                            </ul>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        </div> */}
                         <div className="bg-white rounded-lg border border-gray-200 overflow-hidden sticky top-8">
                             <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
                                 <h3 className="font-semibold text-gray-900">Applicant Details</h3>
@@ -491,16 +283,12 @@ const GenerateLetter = () => {
                                 )}
                             </div>
                         </div>
-                        {/* Right Column - Preview */}
+
+                        {/* Action Buttons */}
                         <div className="space-y-6 mt-8">
                             <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
                                 <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
-                                    <div className="flex items-center space-x-3">
-                                        {/* <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                        </svg> */}
-                                        <p>Fill out the form and click "Generate Draft" to create your letter</p>
-                                    </div>
+                                    <p>Fill out the form and click "Generate Draft" to create your letter</p>
                                 </div>
                                 <div className="p-6">
                                     {generating && (
@@ -508,26 +296,10 @@ const GenerateLetter = () => {
                                             <div className="text-center">
                                                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
                                                 <p className="text-gray-600">Generating your letter draft...</p>
+                                                <p className="text-sm text-gray-500 mt-2">Using {availableModels.find(m => m.id === selectedModel)?.name || selectedModel}</p>
                                             </div>
                                         </div>
                                     )}
-
-                                    {/* {!generating && !showContent && (
-                                        <div className="text-center py-12 text-gray-500">
-                                            <svg className="w-12 h-12 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                            </svg>
-                                            <p>Fill out the form and click "Generate Draft" to create your letter</p>
-                                        </div>
-                                    )} */}
-
-                                    {/* {!generating && showContent && (
-                                        <div className="border border-gray-200 rounded-md p-6 bg-white max-h-96 overflow-y-auto">
-                                            <pre className="whitespace-pre-wrap font-serif text-sm leading-relaxed text-gray-900">
-                                                {generatedContent}
-                                            </pre>
-                                        </div>
-                                    )} */}
 
                                     <div className="flex justify-end space-x-4 mt-6">
                                         <button
@@ -545,7 +317,7 @@ const GenerateLetter = () => {
                                             <button
                                                 type="button"
                                                 onClick={handleSubmit}
-                                                disabled={generating || !selectedTemplateId}
+                                                disabled={generating || !selectedTemplateId || !selectedModel}
                                                 className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
                                             >
                                                 {generating ? (
@@ -590,110 +362,136 @@ const GenerateLetter = () => {
                                 </div>
                             </div>
                         </div>
-
                     </div>
-                    {/* Additional Context Form */}
+
+                    {/* Main Content - Form */}
                     <div className="lg:col-span-3">
-                    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-                        <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
-                            <div className="flex items-center space-x-3">
-                                <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                                </svg>
-                                <h3 className="text-lg font-semibold text-gray-900">Additional Context</h3>
+                        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                            <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
+                                <div className="flex items-center space-x-3">
+                                    <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                                    </svg>
+                                    <h3 className="text-lg font-semibold text-gray-900">Letter Configuration & Context</h3>
+                                </div>
                             </div>
-                        </div>
-                        <div className="p-6 space-y-6">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    Letter Template <span className="text-red-500">*</span>
-                                </label>
-                                <select
-                                    value={selectedTemplateId}
-                                    onChange={(e) => setSelectedTemplateId(e.target.value)}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                >
-                                    <option value="">Select a template...</option>
-                                    {templates.map((tpl) => (
-                                        <option key={tpl.id} value={tpl.id}>
-                                            {tpl.name}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
+                            <div className="p-6 space-y-6">
+                                {/* Template Selection */}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        Letter Template <span className="text-red-500">*</span>
+                                    </label>
+                                    <select
+                                        value={selectedTemplateId}
+                                        onChange={(e) => setSelectedTemplateId(e.target.value)}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                    >
+                                        <option value="">Select a template...</option>
+                                        {templates.map((tpl) => (
+                                            <option key={tpl.id} value={tpl.id}>
+                                                {tpl.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
 
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    Your Relationship <span className="text-red-500">*</span>
-                                </label>
-                                <input
-                                    type="text"
-                                    name="relationship"
-                                    value={context.relationship}
-                                    onChange={handleChange}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                    placeholder="e.g., student in my Advanced AI course"
-                                />
-                            </div>
+                                {/* AI Model Selection */}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        AI Model <span className="text-red-500">*</span>
+                                    </label>
+                                    <select
+                                        value={selectedModel}
+                                        onChange={(e) => setSelectedModel(e.target.value)}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        disabled={generating}
+                                    >
+                                        {availableModels.map((model) => (
+                                            <option key={model.id} value={model.id}>
+                                                {model.name} - {model.description} ({model.pricing})
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <p className="mt-1 text-xs text-gray-500">
+                                        {selectedModel === 'llama-3.1-8b' || selectedModel === 'gemma-2-9b' || selectedModel === 'phi-3-mini' || selectedModel === 'mistral-7b' 
+                                            ? '🎉 FREE model selected - no costs!' 
+                                            : '💰 This model has usage costs. Free models are recommended for testing.'}
+                                    </p>
+                                </div>
 
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    Duration of Relationship <span className="text-red-500">*</span>
-                                </label>
-                                <input
-                                    type="text"
-                                    name="duration"
-                                    value={context.duration}
-                                    onChange={handleChange}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                    placeholder="e.g., 2 years, 1 semester"
-                                />
-                            </div>
+                                {/* Context Fields */}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        Your Relationship <span className="text-red-500">*</span>
+                                    </label>
+                                    <input
+                                        type="text"
+                                        name="relationship"
+                                        value={context.relationship}
+                                        onChange={handleChange}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        placeholder="e.g., student in my Advanced AI course"
+                                    />
+                                </div>
 
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    Key Strengths <span className="text-red-500">*</span>
-                                </label>
-                                <textarea
-                                    name="strengths"
-                                    value={context.strengths}
-                                    onChange={handleChange}
-                                    rows={3}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                    placeholder="Describe the applicant's key strengths and qualities you've observed"
-                                />
-                            </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        Duration of Relationship <span className="text-red-500">*</span>
+                                    </label>
+                                    <input
+                                        type="text"
+                                        name="duration"
+                                        value={context.duration}
+                                        onChange={handleChange}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        placeholder="e.g., 2 years, 1 semester"
+                                    />
+                                </div>
 
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    Specific Examples
-                                </label>
-                                <textarea
-                                    name="specific_examples"
-                                    value={context.specific_examples}
-                                    onChange={handleChange}
-                                    rows={3}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                    placeholder="Provide specific examples of their work, achievements, or notable incidents"
-                                />
-                            </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        Key Strengths <span className="text-red-500">*</span>
+                                    </label>
+                                    <textarea
+                                        name="strengths"
+                                        value={context.strengths}
+                                        onChange={handleChange}
+                                        rows={3}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        placeholder="Describe the applicant's key strengths and qualities you've observed"
+                                    />
+                                </div>
 
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    Additional Context
-                                </label>
-                                <textarea
-                                    name="additional_context"
-                                    value={context.additional_context}
-                                    onChange={handleChange}
-                                    rows={3}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                    placeholder="Any other relevant information you'd like to include"
-                                />
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        Specific Examples
+                                    </label>
+                                    <textarea
+                                        name="specific_examples"
+                                        value={context.specific_examples}
+                                        onChange={handleChange}
+                                        rows={3}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        placeholder="Provide specific examples of their work, achievements, or notable incidents"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        Additional Context
+                                    </label>
+                                    <textarea
+                                        name="additional_context"
+                                        value={context.additional_context}
+                                        onChange={handleChange}
+                                        rows={3}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        placeholder="Any other relevant information you'd like to include"
+                                    />
+                                </div>
                             </div>
                         </div>
                     </div>
-</div>
                 </div>
             </div>
         </div>

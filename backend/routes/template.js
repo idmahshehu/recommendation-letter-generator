@@ -2,6 +2,104 @@ const express = require('express');
 const { Template, User } = require('../models');
 const { auth, authorize: roleAuth } = require('../middleware/auth');
 const router = express.Router();
+const multer = require('multer');
+const { analyzeLetterStructure, extractTextFromPDF } =
+  require('../utils/letterAnalyzer');
+const { generateTemplateFromAnalysis } = require('../utils/templateGenerator');
+
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  fileFilter: (req, file, cb) => {
+    // Accept only text files and PDFs
+    if (file.mimetype === 'text/plain' || file.mimetype === 'application/pdf') {
+      cb(null, true);
+    } else {
+      cb(new Error('Only .txt and .pdf files are allowed'));
+    }
+  }
+});
+
+router.post('/analyze-letter', auth, upload.single('letter'), async (req, res) => {
+  console.log('CT:', req.headers['content-type']);
+  console.log('has file?', !!req.file, req.file?.mimetype, req.file?.originalname);  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    let letterText;
+    
+    if (req.file.mimetype === 'text/plain') {
+      letterText = req.file.buffer.toString('utf8');
+    } else if (req.file.mimetype === 'application/pdf') {
+      // Extract text from PDF
+      letterText = await extractTextFromPDF(req.file.buffer);
+    }
+
+    // Analyze the letter structure
+    const analysis = await analyzeLetterStructure(letterText);
+    
+    res.json({
+      analysis,
+      originalText: letterText.substring(0, 500) + '...' // Preview
+    });
+
+  } catch (error) {
+    console.error('Letter analysis error:', error);
+    res.status(500).json({ error: 'Failed to analyze letter' });
+  }
+});
+
+
+router.post('/create-from-analysis', auth, roleAuth('referee'), async (req, res) => {
+  try {
+    const { analysis, templateName, templateDescription } = req.body;
+
+    if (!analysis || !templateName) {
+      return res.status(400).json({ error: 'Analysis data and template name required' });
+    }
+
+    console.log('Analysis received:', analysis);
+    console.log('Template name:', templateName);
+
+    // Generate template from analysis
+    const templateData = generateTemplateFromAnalysis(analysis, templateName);
+
+    console.log('Generated template data:', templateData);
+
+        if (!templateData.promptTemplate) {
+      console.error('Generated template has no promptTemplate');
+      return res.status(500).json({ error: 'Failed to generate template content' });
+    }
+    
+    // Save to database
+    const template = await Template.create({
+      ...templateData,
+      description: templateDescription || 'Template created from letter analysis',
+      created_by: req.user.id,
+      is_system_template: false,
+      is_active: true,
+      usage_count: 0
+    });
+
+    res.json({
+      message: 'Template created successfully from letter analysis',
+      template: {
+        id: template.id,
+        name: template.name,
+        category: template.category,
+        description: template.description
+      }
+    });
+
+    console.log(template.json());
+
+  } catch (error) {
+    console.error('Template creation error:', error);
+    res.status(500).json({ error: 'Failed to create template' });
+  }
+});
 
 /**
  * @swagger
@@ -212,6 +310,8 @@ router.post('/', auth, roleAuth('referee'), async (req, res) => {
         res.status(500).json({ error: 'Failed to create template' });
     }
 });
+
+
 
 /**
  * @swagger

@@ -6,7 +6,9 @@ const { generateLetterGemini } = require('../utils/gemini');
 const { generateWithOllama } = require('../utils/ollama');
 const { json } = require('sequelize');
 const { Op, Sequelize } = require('sequelize');
-const { generateWithOpenAI } = require('../utils/openai');
+const { generateWithOpenRouter } = require('../utils/openrouter');
+const { getAvailableModels } = require('../utils/openrouter');
+
 const Letter = db.Letter;
 const User = db.User;
 const Template = db.Template;
@@ -82,18 +84,18 @@ router.post('/request', auth, roleAuth('applicant'), async (req, res) => {
   try {
     const { referee_email, applicant_data, preferences = {} } = req.body;
 
-        // Validate required fields
+    // Validate required fields
     if (!referee_email || !applicant_data) {
-      return res.status(400).json({ 
-        error: 'Referee email and applicant data are required' 
+      return res.status(400).json({
+        error: 'Referee email and applicant data are required'
       });
     }
 
-        // Validate email format
+    // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(referee_email)) {
-      return res.status(400).json({ 
-        error: 'Please enter a valid email address' 
+      return res.status(400).json({
+        error: 'Please enter a valid email address'
       });
     }
 
@@ -105,11 +107,11 @@ router.post('/request', auth, roleAuth('applicant'), async (req, res) => {
       }
     });
 
-        if (!referee) {
+    if (!referee) {
       return res.status(404).json({ error: 'Referee not found' });
     }
 
-       // Check if there's already a pending request from this applicant to this referee
+    // Check if there's already a pending request from this applicant to this referee
     const existingRequest = await Letter.findOne({
       where: {
         referee_id: referee.id,
@@ -128,7 +130,7 @@ router.post('/request', auth, roleAuth('applicant'), async (req, res) => {
 
     // Create letter request
     const letter = await Letter.create({
-      referee_id: referee.id, 
+      referee_id: referee.id,
       applicant_data: {
         ...applicant_data,
         requester_id: req.user.id // requesting user id
@@ -193,7 +195,7 @@ router.get('/pending', auth, roleAuth('referee'), async (req, res) => {
       id: l.id,
       created_at: l.createdAt,
       datatype: typeof l.createdAt
-    }))); 
+    })));
 
     res.json({
       pending_requests: pendingLetters.map(letter => ({
@@ -380,10 +382,240 @@ router.post('/:id/reject', auth, roleAuth('referee'), async (req, res) => {
   }
 });
 
+// ------------------------------------------------
+// UTILITY FUNCTIONS
+// ------------------------------------------------
+
+function fillTemplate(template, values) {
+  return template.replace(/{(.*?)}/g, (_, key) => values[key] || `{${key}}`);
+}
+
 
 // ------------------------------------------------
 // REFEREE FLOW - Step 3: Generate Draft
 // ------------------------------------------------
+
+// /**
+//  * @swagger
+//  * /api/letters/{id}/generate-draft:
+//  *   post:
+//  *     summary: Generate AI draft for a letter request (referee only)
+//  *     tags: [Letters]
+//  *     parameters:
+//  *       - in: path
+//  *         name: id
+//  *         required: true
+//  *         schema:
+//  *           type: string
+//  *     requestBody:
+//  *       required: true
+//  *       content:
+//  *         application/json:
+//  *           schema:
+//  *             type: object
+//  *             properties:
+//  *               template_id:
+//  *                 type: string
+//  *                 format: uuid
+//  *               extra_context:
+//  *                 type: object
+//  *                 properties:
+//  *                   relationship:
+//  *                     type: string
+//  *                     example: "student in my Advanced AI course"
+//  *                   duration:
+//  *                     type: string
+//  *                     example: "2 years"
+//  *                   strengths:
+//  *                     type: string
+//  *                     example: "exceptional analytical thinking and leadership"
+//  *                   specific_examples:
+//  *                     type: string
+//  *                     example: "Led a team project that achieved 95% accuracy"
+//  *     responses:
+//  *       200:
+//  *         description: Draft generated successfully
+//  *       404:
+//  *         description: Letter request not found
+//  *       403:
+//  *         description: Not authorized to generate draft for this letter
+//  */
+
+// router.post('/:id/generate-draft', auth, roleAuth('referee'), async (req, res) => {
+//   try {
+//     const { template_id, extra_context = {} } = req.body;
+
+//     // Find the letter request
+//     const letter = await Letter.findOne({
+//       where: {
+//         id: req.params.id,
+//         referee_id: req.user.id,
+//         status: 'in_progress'
+//       }
+//     });
+
+//     if (!letter) {
+//       return res.status(404).json({ error: 'Letter request not found or already processed' });
+//     }
+
+//     // Get template
+//     const template = await Template.findByPk(template_id);
+//     if (!template) {
+//       return res.status(404).json({ error: 'Template not found' });
+//     }
+
+//     // Get referee info
+//     const referee = await User.findByPk(req.user.id, {
+//       attributes: ['firstName', 'lastName', 'email', 'institution', 'department', 'title']
+//     });
+
+//     // Build context for AI generation
+//     const applicantName = `${letter.applicant_data.firstName} ${letter.applicant_data.lastName}`;
+
+//     const values = {
+//       applicantName,
+//       position: letter.applicant_data.goal || letter.applicant_data.program,
+//       relationship: extra_context.relationship || 'student',
+//       duration: extra_context.duration || '1 year',
+//       strengths: extra_context.strengths || letter.applicant_data.achievements?.join(', ') || 'dedication and curiosity',
+//       examples: extra_context.specific_examples || '',
+//       additionalContext: extra_context.additional_context || '',
+
+//       // Generation parameters with defaults
+//       tone: letter.generation_parameters?.tone || 'formal',
+//       length: letter.generation_parameters?.length || 'standard',
+//       detailLevel: letter.generation_parameters?.detailLevel || 'comprehensive',
+
+//       // Referee info
+//       refereeName: `${referee.firstName} ${referee.lastName}`,
+//       refereeEmail: referee.email || '',
+//       refereeInstitution: referee.institution || 'our institution',
+//       refereeDepartment: referee.department || 'the department',
+//       refereeTitle: referee.title || 'Professor'
+//     };
+
+//     // Fill template and create prompt
+// //     const filledTemplate = fillTemplate(template.promptTemplate, values);
+// //     const prompt = `You are writing a ${template.category} recommendation letter.
+// // Referee Info: ${referee.firstName} ${referee.lastName}, ${referee.title} at ${referee.institution}
+// // Applicant Info: ${JSON.stringify(letter.applicant_data, null, 2)}
+// // Additional Context: ${JSON.stringify(extra_context, null, 2)}
+
+// // ${filledTemplate}`;
+
+// // Replace the confusing prompt with a clearer structure
+// const buildPrompt = (template, values, applicantData, extraContext) => {
+//   const filledTemplate = fillTemplate(template.promptTemplate, values);
+
+//   return `${filledTemplate}
+
+// STRICT REQUIREMENTS:
+// - Applicant: ${applicantData.firstName} ${applicantData.lastName}
+// - Purpose: ${applicantData.goal || applicantData.program}
+// - Use ONLY these achievements: ${applicantData.achievements?.join(', ') || 'None provided'}
+// - Referee context: ${JSON.stringify(extraContext, null, 2)}
+
+// Do not invent examples or use information not provided above.`;
+// };
+
+// // Use it in your endpoint
+// const prompt = buildPrompt(template, values, letter.applicant_data, extra_context);
+
+//     // Log for debugging
+//     console.log('Template ID:', template_id);
+//     console.log('Extra context:', extra_context);
+//     console.log('Letter:', letter);
+//     console.log('Prompt preview:\n', prompt);
+
+//     // Generate draft with AI
+//     let generatedText;
+//     // try {
+//     //   console.log('Generating with Ollama...');
+//     //   generatedText = await generateWithOllama(prompt);
+//     //   console.log('Generated text:', generatedText);
+//     // } catch (generationError) {
+//     //   console.error('Ollama Generation Error:', generationError.message);
+//     //   return res.status(500).json({ error: 'Failed to generate letter with Ollama.' });
+//     // }
+//     try {
+//       console.log('Generating with OpenAI...');
+//       generatedText = await generateWithOpenAI(prompt, {
+//         model: 'gpt-3.5-turbo', // or 'gpt-4' for higher quality
+//         maxTokens: 800,
+//         temperature: 0.7
+//       });
+//       console.log('Generated successfully');
+//     } catch (generationError) {
+//       console.error('OpenAI Generation Error:', generationError.message);
+//       return res.status(500).json({ error: 'Failed to generate letter with Ollama.' });
+//     }
+
+//     // Only update if generation was successful
+//     if (!generatedText) {
+//       return res.status(500).json({ error: 'No content generated from AI' });
+//     }
+
+//     // Update letter with draft content
+//     // await letter.update({
+//     //   template_id,
+//     //   letter_content: generatedText,
+//     //   model_used: 'ollama-llama2',
+//     //   status: 'draft',
+//     //   generation_attempts: (letter.generation_attempts || 0) + 1,
+//     //   generation_parameters: {
+//     //     ...letter.generation_parameters,
+//     //     extra_context
+//     //   }
+//     // });
+//     await letter.update({
+//       template_id,
+//       letter_content: generatedText.content,
+//       model_used: generatedText.model,
+//       status: 'draft',
+//       generation_attempts: (letter.generation_attempts || 0) + 1,
+//       generation_parameters: {
+//         ...letter.generation_parameters,
+//         extra_context,
+//         tokens_used: generatedText.usage?.total_tokens
+//       }
+//     });
+
+//     res.json({
+//       message: 'Draft generated successfully',
+//       // letter: {
+//       //   id: letter.id,
+//       //   content: generatedText,
+//       //   status: 'draft',
+//       //   applicant: {
+//       //     name: applicantName,
+//       //     program: letter.applicant_data.program
+//       //   },
+//       //   generated_at: letter.updated_at
+//       // }
+//       letter: {
+//         id: letter.id,
+//         content: generatedText.content,
+//         status: 'draft',
+//         applicant: {
+//           name: applicantName,
+//           program: letter.applicant_data.program
+//         },
+//         generated_at: letter,
+//         // tokens_used: generatedText.usage?.total_tokens
+//       }
+//     });
+//   } catch (err) {
+//     console.error('Error generating draft:', err);
+//     res.status(500).json({ error: 'Failed to generate draft' });
+//   }
+// });
+
+// ------------------------------------------------
+// REFEREE FLOW - Edit and Finalize
+// ------------------------------------------------
+
+
+// Updated router endpoint
 
 /**
  * @swagger
@@ -397,42 +629,150 @@ router.post('/:id/reject', auth, roleAuth('referee'), async (req, res) => {
  *         required: true
  *         schema:
  *           type: string
+ *           format: uuid
+ *         description: The ID of the letter request
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
  *             type: object
+ *             required:
+ *               - template_id
  *             properties:
  *               template_id:
  *                 type: string
  *                 format: uuid
+ *                 description: ID of the letter template to use
+ *                 example: "550e8400-e29b-41d4-a716-446655440001"
+ *               selected_model:
+ *                 type: string
+ *                 description: AI model to use for generation
+ *                 enum: 
+ *                   - gpt-3.5-turbo
+ *                   - mistral-7b
+ *                   - claude-3-haiku
+ *                 default: gpt-3.5-turbo
+ *                 example: "mistral-7b"
  *               extra_context:
  *                 type: object
+ *                 description: Additional context from referee to personalize the letter
  *                 properties:
  *                   relationship:
  *                     type: string
+ *                     description: Referee's relationship with the applicant
  *                     example: "student in my Advanced AI course"
  *                   duration:
  *                     type: string
+ *                     description: How long the referee has known the applicant
  *                     example: "2 years"
  *                   strengths:
  *                     type: string
+ *                     description: Key strengths observed by the referee
  *                     example: "exceptional analytical thinking and leadership"
  *                   specific_examples:
  *                     type: string
+ *                     description: Specific examples or achievements to highlight
  *                     example: "Led a team project that achieved 95% accuracy"
+ *                   additional_context:
+ *                     type: string
+ *                     description: Any other relevant information
+ *                     example: "Showed remarkable improvement throughout the semester"
  *     responses:
  *       200:
  *         description: Draft generated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Draft generated successfully"
+ *                 letter:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                       format: uuid
+ *                       example: "4eca47f1-e761-456a-8236-d0e1849f3576"
+ *                     content:
+ *                       type: string
+ *                       description: Generated letter content
+ *                       example: "Dear Admissions Committee,\n\nI am writing to recommend..."
+ *                     status:
+ *                       type: string
+ *                       example: "draft"
+ *                     model_used:
+ *                       type: string
+ *                       description: Actual model identifier used by the AI service
+ *                       example: "mistralai/mistral-7b-instruct"
+ *                     selected_model:
+ *                       type: string
+ *                       description: Model selected by the user
+ *                       example: "mistral-7b"
+ *                     applicant:
+ *                       type: object
+ *                       properties:
+ *                         name:
+ *                           type: string
+ *                           example: "Jane Doe"
+ *                         program:
+ *                           type: string
+ *                           example: "MSc in Computer Science"
+ *                     generated_at:
+ *                       type: string
+ *                       format: date-time
+ *                       example: "2025-09-21T15:50:47.453Z"
+ *                     tokens_used:
+ *                       type: integer
+ *                       description: Number of tokens consumed (if available)
+ *                       example: 615
+ *       400:
+ *         description: Bad request - invalid model or missing required fields
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: "Model mistral-8b is not available"
  *       404:
- *         description: Letter request not found
+ *         description: Letter request or template not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: "Letter request not found or already processed"
  *       403:
  *         description: Not authorized to generate draft for this letter
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: "Not authorized to generate draft for this letter"
+ *       500:
+ *         description: AI generation failed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: "Failed to generate letter: Rate limit exceeded"
  */
+
 router.post('/:id/generate-draft', auth, roleAuth('referee'), async (req, res) => {
   try {
-    const { template_id, extra_context = {} } = req.body;
+    const { template_id, extra_context = {}, selected_model = 'gpt-3.5-turbo' } = req.body;
 
     // Find the letter request
     const letter = await Letter.findOne({
@@ -463,12 +803,14 @@ router.post('/:id/generate-draft', auth, roleAuth('referee'), async (req, res) =
 
     const values = {
       applicantName,
-      position: letter.applicant_data.program,
+      position: letter.applicant_data.goal || letter.applicant_data.program,
       relationship: extra_context.relationship || 'student',
       duration: extra_context.duration || '1 year',
       strengths: extra_context.strengths || letter.applicant_data.achievements?.join(', ') || 'dedication and curiosity',
       examples: extra_context.specific_examples || '',
       additionalContext: extra_context.additional_context || '',
+
+      // Generation parameters with defaults
       tone: letter.generation_parameters?.tone || 'formal',
       length: letter.generation_parameters?.length || 'standard',
       detailLevel: letter.generation_parameters?.detailLevel || 'comprehensive',
@@ -481,96 +823,77 @@ router.post('/:id/generate-draft', auth, roleAuth('referee'), async (req, res) =
       refereeTitle: referee.title || 'Professor'
     };
 
-    // Fill template and create prompt
-    const filledTemplate = fillTemplate(template.promptTemplate, values);
-    const prompt = `You are writing a ${template.category} recommendation letter.
-Referee Info: ${referee.firstName} ${referee.lastName}, ${referee.title} at ${referee.institution}
-Applicant Info: ${JSON.stringify(letter.applicant_data, null, 2)}
-Additional Context: ${JSON.stringify(extra_context, null, 2)}
+    const buildPrompt = (template, values, applicantData, extraContext) => {
+      const filledTemplate = fillTemplate(template.promptTemplate, values);
 
-${filledTemplate}`;
+      return `${filledTemplate}
+
+STRICT REQUIREMENTS:
+- Applicant: ${applicantData.firstName} ${applicantData.lastName}
+- Purpose: ${applicantData.goal || applicantData.program}
+- Use ONLY these achievements: ${applicantData.achievements?.join(', ') || 'None provided'}
+- Referee context: ${JSON.stringify(extraContext, null, 2)}
+
+Do not invent examples or use information not provided above.`;
+    };
+
+    const prompt = buildPrompt(template, values, letter.applicant_data, extra_context);
 
     // Log for debugging
     console.log('Template ID:', template_id);
+    console.log('Selected Model:', selected_model);
     console.log('Extra context:', extra_context);
-    console.log('Letter:', letter);
-    console.log('Prompt preview:\n', prompt);
 
-    // Generate draft with AI
+    // Generate draft with OpenRouter
     let generatedText;
-    // try {
-    //   console.log('Generating with Ollama...');
-    //   generatedText = await generateWithOllama(prompt);
-    //   console.log('Generated text:', generatedText);
-    // } catch (generationError) {
-    //   console.error('Ollama Generation Error:', generationError.message);
-    //   return res.status(500).json({ error: 'Failed to generate letter with Ollama.' });
-    // }
     try {
-      console.log('Generating with OpenAI...');
-      generatedText = await generateWithOpenAI(prompt, {
-        model: 'gpt-3.5-turbo', // or 'gpt-4' for higher quality
+      console.log(`Generating with OpenRouter using model: ${selected_model}...`);
+      generatedText = await generateWithOpenRouter(prompt, {
+        model: selected_model,
         maxTokens: 800,
         temperature: 0.7
       });
       console.log('Generated successfully');
     } catch (generationError) {
-      console.error('OpenAI Generation Error:', generationError.message);
-      return res.status(500).json({ error: 'Failed to generate letter with Ollama.' });
+      console.error('OpenRouter Generation Error:', generationError.message);
+      return res.status(500).json({ error: `Failed to generate letter: ${generationError.message}` });
     }
 
     // Only update if generation was successful
-    if (!generatedText) {
+    if (!generatedText || !generatedText.content) {
       return res.status(500).json({ error: 'No content generated from AI' });
     }
 
     // Update letter with draft content
-    // await letter.update({
-    //   template_id,
-    //   letter_content: generatedText,
-    //   model_used: 'ollama-llama2',
-    //   status: 'draft',
-    //   generation_attempts: (letter.generation_attempts || 0) + 1,
-    //   generation_parameters: {
-    //     ...letter.generation_parameters,
-    //     extra_context
-    //   }
-    // });
     await letter.update({
       template_id,
       letter_content: generatedText.content,
       model_used: generatedText.model,
+      selected_model: selected_model, // Store user's model choice
       status: 'draft',
       generation_attempts: (letter.generation_attempts || 0) + 1,
       generation_parameters: {
         ...letter.generation_parameters,
         extra_context,
-        tokens_used: generatedText.usage?.total_tokens
+        tokens_used: generatedText.usage?.total_tokens,
+        model_selection: selected_model
       }
     });
 
     res.json({
       message: 'Draft generated successfully',
-      // letter: {
-      //   id: letter.id,
-      //   content: generatedText,
-      //   status: 'draft',
-      //   applicant: {
-      //     name: applicantName,
-      //     program: letter.applicant_data.program
-      //   },
-      //   generated_at: letter.updated_at
-      // }
       letter: {
         id: letter.id,
         content: generatedText.content,
         status: 'draft',
+        model_used: generatedText.model,
+        selected_model: selected_model,
         applicant: {
           name: applicantName,
           program: letter.applicant_data.program
         },
-        generated_at: letter,
-        // tokens_used: generatedText.usage?.total_tokens
+        generated_at: new Date(),
+        tokens_used: generatedText.usage?.total_tokens
       }
     });
   } catch (err) {
@@ -579,9 +902,47 @@ ${filledTemplate}`;
   }
 });
 
-// ------------------------------------------------
-// REFEREE FLOW - Edit and Finalize
-// ------------------------------------------------
+// Add endpoint to get available models
+
+/**
+ * @swagger
+ * /api/letters/available-models:
+ *   get:
+ *     summary: Get available AI models for letter generation (referee only)
+ *     description: Returns a list of whitelisted AI models that referees can use for generating recommendation letters.
+ *     tags: [Letters]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Successfully retrieved models
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 models:
+ *                   type: array
+ *                   items:
+ *                     type: string
+ *                   example: ["gpt-3.5", "claude-instant", "mistral"]
+ *       401:
+ *         description: Unauthorized – missing or invalid JWT
+ *       403:
+ *         description: Forbidden – only referees can access this
+ *       500:
+ *         description: Internal server error
+ */
+
+ router.get('/available-models', auth, roleAuth('referee'), async (req, res) => {
+  try {
+    const models = getAvailableModels();
+    res.json({ models });
+  } catch (error) {
+    console.error('Error getting available models:', error);
+    res.status(500).json({ error: 'Failed to get available models' });
+  }
+});
 
 /**
  * @swagger
@@ -892,14 +1253,17 @@ router.get('/', auth, async (req, res) => {
         },
         referee: letter.referee ? {
           name: `${letter.referee.firstName} ${letter.referee.lastName}`,
-          institution: letter.referee.institution
+          institution: letter.referee.institution,
+          email: letter.referee.email
         } : null,
         template: letter.template,
         created_at: letter.createdAt,
         completed_at: letter.status === 'completed' ? letter.updated_at : null,
         // Only show content to referee or if completed
-        content: (req.user.role === 'referee' || letter.status === 'completed') ?
-          letter.letter_content : null
+        // content: (req.user.role === 'referee' || letter.status === 'completed') ?
+        content: letter.status === 'completed' ?
+          letter.letter_content : null,
+        rejection_reason: letter.status === 'rejected' ? letter.rejection_reason : null
       })),
       pagination: {
         total: letters.count,
@@ -1020,14 +1384,6 @@ router.get('/:id', auth, async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch letter' });
   }
 });
-
-// ------------------------------------------------
-// UTILITY FUNCTIONS
-// ------------------------------------------------
-
-function fillTemplate(template, values) {
-  return template.replace(/{(.*?)}/g, (_, key) => values[key] || `{${key}}`);
-}
 
 // ------------------------------------------------
 // LEGACY/ADMIN ROUTES 
