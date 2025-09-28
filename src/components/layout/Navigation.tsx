@@ -11,17 +11,12 @@ export const Navigation: React.FC<NavigationProps> = ({ user }) => {
   const navigate = useNavigate();
   const { logout } = useAuth();
 
-  const [currentView, setCurrentView] = useState<"dashboard" | "letters" | "templates">("dashboard");
-
-  // const handleNavigate = (view: "dashboard" | "letters" | "templates") => {
-  //   setCurrentView(view);
-  //   navigate(`/${view}`);
-  // };
+  const [currentView, setCurrentView] = useState<"dashboard" | "letters" | "templates" | "profile">("dashboard");
 
    const tabs =
     user?.role === "applicant"
       ? (["dashboard", "letters"] as const)
-      : (["dashboard", "letters", "templates"] as const);
+      : (["dashboard", "letters", "templates", "profile"] as const);
 
   const handleNavigate = (view: typeof tabs[number]) => {
     setCurrentView(view);
@@ -34,6 +29,7 @@ export const Navigation: React.FC<NavigationProps> = ({ user }) => {
       if (view === "dashboard") return navigate("/dashboard");
       if (view === "letters") return navigate("/letters");
       if (view === "templates") return navigate("/templates");
+      if (view === "profile") return navigate("/profile");
     }
   };
 

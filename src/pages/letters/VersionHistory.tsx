@@ -1,0 +1,194 @@
+import React, { useState, useEffect } from 'react';
+import { api } from '../../services/api';
+
+interface HistoryEntry {
+  version: number;
+  model_used: string;
+  selected_model: string;
+  created_at: string;
+  tokens_used: number;
+  content_preview: string;
+}
+
+interface VersionHistoryProps {
+  letterId: string;
+  currentVersion: number;
+  onVersionRestored: (newContent: string, version: number) => void;
+}
+
+const VersionHistory: React.FC<VersionHistoryProps> = ({
+  letterId,
+  currentVersion,
+  onVersionRestored
+}) => {
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [selectedVersion, setSelectedVersion] = useState<number | ''>('');
+  const [showPreview, setShowPreview] = useState(false);
+  const [previewContent, setPreviewContent] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [restoring, setRestoring] = useState(false);
+
+  useEffect(() => {
+    fetchHistory();
+  }, [letterId]);
+
+  const fetchHistory = async () => {
+    try {
+      const response = await api.get(`/letters/${letterId}/history`);
+      setHistory(response.data.history);
+    } catch (error) {
+      console.error('Failed to fetch history:', error);
+    }
+  };
+
+  const handleVersionSelect = async (version: string) => {
+    if (!version) {
+      setSelectedVersion('');
+      setShowPreview(false);
+      return;
+    }
+
+    const versionNum = parseInt(version);
+    setSelectedVersion(versionNum);
+    setLoading(true);
+
+    try {
+      const response = await api.get(`/letters/${letterId}/history/${versionNum}`);
+      setPreviewContent(response.data.content);
+      setShowPreview(true);
+    } catch (error) {
+      console.error('Failed to fetch version:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRestore = async () => {
+    if (!selectedVersion) return;
+
+    setRestoring(true);
+    try {
+      const response = await api.post(`/letters/${letterId}/restore/${selectedVersion}`);
+      onVersionRestored(response.data.letter.content, response.data.letter.version);
+      setSelectedVersion('');
+      setShowPreview(false);
+      await fetchHistory(); // Refresh history
+    } catch (error) {
+      console.error('Failed to restore version:', error);
+      alert('Failed to restore version. Please try again.');
+    } finally {
+      setRestoring(false);
+    }
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  if (history.length === 0) {
+    return null; 
+  }
+
+  return (
+    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+      <div className="bg-purple-50 px-4 py-3 border-b border-gray-200">
+        <h3 className="font-semibold text-gray-900">Version History</h3>
+        <p className="text-xs text-gray-600 mt-1">Current: Version {currentVersion}</p>
+      </div>
+      
+      <div className="p-4 space-y-4">
+        {/* Version Selector */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            View Previous Version
+          </label>
+          <select
+            value={selectedVersion}
+            onChange={(e) => handleVersionSelect(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+            disabled={loading || restoring}
+          >
+            <option value="">Select version...</option>
+            {history.map((entry) => (
+              <option key={entry.version} value={entry.version}>
+                Version {entry.version} - {entry.selected_model} ({formatDate(entry.created_at)})
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Loading State */}
+        {loading && (
+          <div className="text-center py-2">
+            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-purple-600 mx-auto"></div>
+          </div>
+        )}
+
+        {/* Preview and Actions */}
+        {showPreview && !loading && (
+          <div className="space-y-3">
+            <div className="bg-gray-50 rounded-md p-3">
+              <h4 className="text-xs font-medium text-gray-700 mb-2">Preview:</h4>
+              <p className="text-xs text-gray-600 leading-relaxed">
+                {previewContent.substring(0, 200)}...
+              </p>
+            </div>
+            
+            <div className="flex space-x-2">
+              <button
+                onClick={() => {
+                  setSelectedVersion('');
+                  setShowPreview(false);
+                }}
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                disabled={restoring}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleRestore}
+                disabled={restoring}
+                className="flex-1 px-3 py-2 bg-purple-600 text-white rounded-md text-sm hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:opacity-50"
+              >
+                {restoring ? (
+                  <div className="flex items-center justify-center">
+                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mr-1"></div>
+                    Restoring...
+                  </div>
+                ) : (
+                  'Restore'
+                )}
+              </button>
+            </div>
+
+            {/* Confirmation Note */}
+            <p className="text-xs text-gray-500 text-center">
+              Current content will be saved before restoring
+            </p>
+          </div>
+        )}
+
+        {/* History Summary */}
+        <div className="border-t border-gray-200 pt-3">
+          <div className="text-xs text-gray-500 space-y-1">
+            <div className="flex justify-between">
+              <span>Total versions:</span>
+              <span>{history.length + 1}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Total tokens used:</span>
+              <span>{history.reduce((sum, entry) => sum + (entry.tokens_used || 0), 0).toLocaleString()}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default VersionHistory;

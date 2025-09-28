@@ -39,7 +39,7 @@
  */
 module.exports = (sequelize, DataTypes) => {
 
-    // Define the Template model
+    //Template model
     const Template = sequelize.define('Template', {
         id: {
             type: DataTypes.UUID,

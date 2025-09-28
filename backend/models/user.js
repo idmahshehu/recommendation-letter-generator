@@ -22,6 +22,20 @@ const { Model } = require('sequelize');
  *         role:
  *           type: string
  *           enum: [referee, applicant]
+ *         fullname:
+ *           type: string
+ *         institution:
+ *           type: string
+ *         department:
+ *           type: string
+ *         title:
+ *           type: string
+ *         city:
+ *           type: string
+ *         state:
+ *           type: string
+ *         university_logo_url:
+ *           type: string
  *         isActive:
  *           type: boolean
  *         isEmailVerified:
@@ -49,7 +63,6 @@ module.exports = (sequelize, DataTypes) => {
       this.hasMany(models.Letter, { foreignKey: 'referee_id', as: 'refereeLetters' });
     }
 
-    // Instance method to check password
     async validatePassword(password) {
       return await bcrypt.compare(password, this.password);
     }
@@ -113,6 +126,35 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.ENUM('referee', 'applicant'),
       allowNull: false,
       defaultValue: 'applicant'
+    },
+    // Profile fields added below
+    fullname: {
+      type: DataTypes.STRING(255),
+      allowNull: true
+    },
+    institution: {
+      type: DataTypes.STRING(255),
+      allowNull: true
+    },
+    department: {
+      type: DataTypes.STRING(255),
+      allowNull: true
+    },
+    title: {
+      type: DataTypes.STRING(255),
+      allowNull: true
+    },
+    city: {
+      type: DataTypes.STRING(255),
+      allowNull: true
+    },
+    state: {
+      type: DataTypes.STRING(255),
+      allowNull: true
+    },
+    university_logo_url: {
+      type: DataTypes.STRING(500),
+      allowNull: true
     },
     isActive: {
       type: DataTypes.BOOLEAN,

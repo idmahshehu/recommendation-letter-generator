@@ -6,6 +6,7 @@ const { auth, authorize } = require('./middleware/auth');
 const swaggerUi = require('swagger-ui-express');
 const swaggerSpec = require('./docs/swagger');
 const cors = require('cors');
+const path = require('path'); 
 
 const app = express();
 
@@ -20,6 +21,8 @@ app.use(express.urlencoded({ extended: true }));
 
 // Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/users', authRoutes);
+app.use('/uploads/logos', express.static(path.join(__dirname, 'uploads/logos')));
 
 // Test route
 app.get('/', (req, res) => {

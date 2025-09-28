@@ -26,10 +26,16 @@
  *           type: object
  *         model_used:
  *           type: string
+ *         selected_model:
+ *           type: string
  *         generation_attempts:
  *           type: integer
  *         status:
  *           type: string
+ *         letter_history:
+ *           type: array
+ *         current_version:
+ *           type: integer
  *         created_at:
  *           type: string
  *           format: date-time
@@ -44,7 +50,6 @@ module.exports = (sequelize, DataTypes) => {
             defaultValue: DataTypes.UUIDV4,
             primaryKey: true
         },
-
         referee_id: {
             type: DataTypes.UUID,
             allowNull: true,
@@ -53,32 +58,26 @@ module.exports = (sequelize, DataTypes) => {
                 key: 'id'
             }
         },
-
         applicant_data: {
             type: DataTypes.JSONB,
             allowNull: false
         },
-
         letter_content: {
             type: DataTypes.TEXT,
             allowNull: true
         },
-
         rejection_reason: {
             type: DataTypes.TEXT,
             allowNull: true
         },
-
         rejected_at: {
             type: DataTypes.DATE,
             allowNull: true
         },
-
         current_version_id: {
             type: DataTypes.UUID,
             allowNull: true
         },
-
         template_id: {
             type: DataTypes.UUID,
             allowNull: true,
@@ -87,31 +86,39 @@ module.exports = (sequelize, DataTypes) => {
                 key: 'id'
             }
         },
-
         generation_parameters: {
             type: DataTypes.JSONB,
             allowNull: true
         },
-
         model_used: {
             type: DataTypes.STRING(50),
             allowNull: true
         },
-
+        selected_model: {
+            type: DataTypes.STRING(255),
+            allowNull: true
+        },
+        letter_history: {
+            type: DataTypes.JSON,
+            allowNull: true
+        },
+        current_version: {
+            type: DataTypes.INTEGER,
+            defaultValue: 1,
+            allowNull: true
+        },
         generation_attempts: {
             type: DataTypes.INTEGER,
             defaultValue: 1
         },
-
         status: {
             type: DataTypes.STRING(20),
             defaultValue: 'draft'
         }
-
     }, {
         tableName: 'letters',
         timestamps: true,
-        underscored: true // created_at, updated_at
+        underscored: true 
     });
 
     // Define associations

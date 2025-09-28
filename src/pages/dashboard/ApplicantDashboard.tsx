@@ -352,8 +352,8 @@ export const ApplicantDashboard: React.FC<ApplicantDashboardProps> = ({ onNaviga
 
   const handleQuickAction = (action: string, letterId?: string) => {
     switch (action) {
-      case 'view_all_letters':
-        onNavigate?.('letters');
+      case 'view-letters':
+        navigate('/view-letters');
         break;
       case 'new_letter':
         navigate('/letters/new');
@@ -404,15 +404,6 @@ export const ApplicantDashboard: React.FC<ApplicantDashboardProps> = ({ onNaviga
   const stats = getStats();
   const recentLetters = allLetters.slice(0, 5);
   
-  // Letters with upcoming deadlines (for applicants to track)
-  const urgentDeadlines = allLetters.filter(letter => {
-    if (!letter.generation_parameters?.deadline || letter.status === 'completed') return false;
-    const deadline = new Date(letter.generation_parameters.deadline);
-    const now = new Date();
-    const daysUntilDeadline = Math.ceil((deadline.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-    return daysUntilDeadline <= 7 && daysUntilDeadline > 0;
-  });
-
   // Recently rejected letters that need attention
   const rejectedLetters = allLetters.filter(letter => letter.status === 'rejected');
 
@@ -468,55 +459,13 @@ export const ApplicantDashboard: React.FC<ApplicantDashboardProps> = ({ onNaviga
                 </div>
               )}
 
-              {/* Urgent Deadlines */}
-              {urgentDeadlines.length > 0 && (
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
-                  <h2 className="text-lg font-semibold text-yellow-800 mb-4">
-                    Upcoming Deadlines ({urgentDeadlines.length})
-                  </h2>
-                  <div className="space-y-3">
-                    {urgentDeadlines.map((letter) => (
-                      <div key={letter.id} className="bg-white rounded-lg p-4 border border-yellow-300">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <p className="font-medium text-gray-900">
-                              {letter.referee?.name || 'Referee'}
-                            </p>
-                            <p className="text-sm text-gray-600">{letter.applicant.program}</p>
-                            <p className="text-xs text-red-600 mt-1">
-                              Due: {letter.generation_parameters?.deadline
-                                ? new Date(letter.generation_parameters.deadline).toLocaleDateString()
-                                : 'Soon'
-                              }
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                              letter.status === 'requested' ? 'bg-gray-100 text-gray-800' :
-                              letter.status === 'in_progress' ? 'bg-blue-100 text-blue-800' :
-                              letter.status === 'draft' ? 'bg-yellow-100 text-yellow-800' :
-                              'bg-green-100 text-green-800'
-                            }`}>
-                              {letter.status === 'requested' ? 'Awaiting Response' :
-                               letter.status === 'in_progress' ? 'Accepted' :
-                               letter.status === 'draft' ? 'In Progress' :
-                               letter.status.replace('_', ' ')
-                              }
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
 
               {/* Recent Letters */}
               <div className="bg-white rounded-lg shadow p-6">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-lg font-semibold text-gray-900">Your Letter Requests</h2>
                   <button
-                    onClick={() => handleQuickAction('view_all_letters')}
+                    onClick={() => handleQuickAction('view-letters')}
                     className="text-blue-600 hover:text-blue-800 text-sm font-medium"
                   >
                     View all →
@@ -610,7 +559,7 @@ export const ApplicantDashboard: React.FC<ApplicantDashboardProps> = ({ onNaviga
                     📝 Request New Letter
                   </button>
                   <button
-                    onClick={() => handleQuickAction('view_all_letters')}
+                    onClick={() => handleQuickAction('view-letters')}
                     className="w-full bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 transition-colors text-left"
                   >
                     📋 View All Letters
@@ -618,37 +567,9 @@ export const ApplicantDashboard: React.FC<ApplicantDashboardProps> = ({ onNaviga
                 </div>
               </div>
 
-              {/* Progress Summary */}
-              <div className="bg-white rounded-lg shadow p-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4">Summary</h2>
-                <div className="space-y-3">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Total Requests</span>
-                    <span className="font-medium">{stats.total}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Completed</span>
-                    <span className="font-medium text-green-600">{stats.completed}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">In Progress</span>
-                    <span className="font-medium text-blue-600">{stats.inReview}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Awaiting Response</span>
-                    <span className="font-medium text-gray-600">{stats.pending}</span>
-                  </div>
-                  {rejectedLetters.length > 0 && (
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Declined</span>
-                      <span className="font-medium text-red-600">{rejectedLetters.length}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
 
               {/* Tips for Applicants */}
-              <div className="bg-blue-50 rounded-lg p-6">
+              {/* <div className="bg-blue-50 rounded-lg p-6">
                 <h3 className="text-sm font-semibold text-blue-900 mb-3">💡 Tips for Success</h3>
                 <ul className="text-sm text-blue-800 space-y-2">
                   <li>• Give referees at least 2-3 weeks notice</li>
@@ -656,7 +577,7 @@ export const ApplicantDashboard: React.FC<ApplicantDashboardProps> = ({ onNaviga
                   <li>• Follow up politely if needed</li>
                   <li>• Send a thank you note after completion</li>
                 </ul>
-              </div>
+              </div> */}
             </div>
           </div>
         </div>

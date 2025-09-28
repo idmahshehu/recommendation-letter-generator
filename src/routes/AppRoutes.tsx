@@ -16,6 +16,7 @@ import LetterRequest from '../pages/letters/LetterRequest';
 import LetterDetailPage from '../pages/letters/LetterDetailPage';
 import LetterAnalyzer from '../pages/templates/LetterAnalyzer';
 import ApplicantLetters from '../pages/letters/ApplicantLetters';
+import ProfilePage from '../pages/auth/ProfilePage';
 
 function AppRoutes() {
   return (
@@ -32,13 +33,6 @@ function AppRoutes() {
           <RegisterPage />
         </PublicRoute>
       } />
-
-      {/* Protected Routes */}
-      {/* <Route path="/dashboard" element={
-        <ProtectedRoute>
-          <DashboardPage />
-        </ProtectedRoute>
-      } /> */}
 
       <Route path="/letters" element={
         <ProtectedRoute allowedRoles={['referee']}>
@@ -105,11 +99,11 @@ function AppRoutes() {
         </ProtectedRoute>
       } />
 
-      {/* <Route path="/profile" element={
-        <ProtectedRoute>
+      <Route path="/profile" element={
+        <ProtectedRoute allowedRoles={['referee']}>
           <ProfilePage />
         </ProtectedRoute>
-      } /> */}
+      } />
 
       {/* Default redirects */}
       {/* <Route path="/" element={

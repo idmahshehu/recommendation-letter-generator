@@ -251,7 +251,7 @@ const GenerateLetter = () => {
                 <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
                     {/* Left Column - Sidebar */}
                     <div className="lg:col-span-1">
-                        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden sticky top-8">
+                        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden top-8">
                             <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
                                 <h3 className="font-semibold text-gray-900">Applicant Details</h3>
                             </div>
@@ -413,10 +413,7 @@ const GenerateLetter = () => {
                                         ))}
                                     </select>
                                     <p className="mt-1 text-xs text-gray-500">
-                                        {selectedModel === 'llama-3.1-8b' || selectedModel === 'gemma-2-9b' || selectedModel === 'phi-3-mini' || selectedModel === 'mistral-7b' 
-                                            ? '🎉 FREE model selected - no costs!' 
-                                            : '💰 This model has usage costs. Free models are recommended for testing.'}
-                                    </p>
+                                        {selectedModel === 'llama-3.1-8b' || selectedModel === 'gemma-2-9b' || selectedModel === 'phi-3-mini' || selectedModel === 'mistral-7b'}                                    </p>
                                 </div>
 
                                 {/* Context Fields */}
