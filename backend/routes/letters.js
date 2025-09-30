@@ -14,6 +14,151 @@ const User = db.User;
 const Template = db.Template;
 
 // ------------------------------------------------
+// UTILITY FUNCTIONS
+// ------------------------------------------------
+
+function fillTemplate(template, values) {
+  return template.replace(/{(.*?)}/g, (_, key) => values[key] || `{${key}}`);
+}
+
+function shouldCreateNewVersion(current, newContent, modelUsed, selectedModel) {
+  if (!current) return true;
+  return (
+    (current.content?.trim() || '') !== (newContent?.trim() || '') ||
+    current.model_used !== modelUsed ||
+    current.selected_model !== selectedModel
+  );
+}
+
+function makeVersionEntry(history, content, modelUsed, selectedModel, generation_parameters) {
+  return {
+    version: history.length + 1,
+    content,
+    model_used: modelUsed,
+    selected_model: selectedModel,
+    generation_parameters,
+    created_at: new Date(),
+    tokens_used: generation_parameters?.tokens_used
+  };
+}
+
+// Helper function to replace placeholders in the generated content
+function replaceLetterPlaceholders(content, referee, applicantName) {
+  let updatedContent = content;
+
+  // Replace common placeholders with actual referee information
+  updatedContent = updatedContent.replace(/\[Your Name\]/g, referee.fullname || `${referee.firstName} ${referee.lastName}`);
+  updatedContent = updatedContent.replace(/\[Your Title\]/g, referee.title || 'Professor');
+  updatedContent = updatedContent.replace(/\[Your Position\]/g, referee.title || 'Professor');
+  updatedContent = updatedContent.replace(/\[University\/Institution Name\]/g, referee.institution || 'University');
+  updatedContent = updatedContent.replace(/\[Your University\/Institution Name\]/g, referee.institution || 'University');
+  updatedContent = updatedContent.replace(/\[Your Department\]/g, referee.department || 'Department');
+  updatedContent = updatedContent.replace(/\[Department\]/g, referee.department || 'Department');
+
+  // Address placeholders
+  updatedContent = updatedContent.replace(/\[Address\]/g, '');
+  updatedContent = updatedContent.replace(/\[City, State\]/g,
+    referee.city && referee.state ? `${referee.city}, ${referee.state}` : '');
+  updatedContent = updatedContent.replace(/\[City, State\]/g,
+    referee.city && referee.state ? `${referee.city}, ${referee.state}` : '');
+
+  // Contact information
+  updatedContent = updatedContent.replace(/\[Email Address\]/g, referee.email || '');
+  updatedContent = updatedContent.replace(/\[Your Email Address\]/g, referee.email || '');
+
+  // Date placeholder
+  const today = new Date().toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  });
+  updatedContent = updatedContent.replace(/\[Date\]/g, today);
+  updatedContent = updatedContent.replace(/\[Today's Date\]/g, today);
+
+  // Clean up any remaining empty brackets or extra whitespace
+  updatedContent = updatedContent.replace(/\[\s*\]/g, ''); // Empty brackets
+  updatedContent = updatedContent.replace(/\n\s*\n\s*\n/g, '\n\n'); // Multiple empty lines
+
+  return updatedContent;
+}
+
+function cleanDuplicateHeaders(content, referee) {
+  let cleanedContent = content;
+
+  // Split into lines
+  const lines = cleanedContent.split('\n');
+  let cleanedLines = [];
+  let headerSectionEnded = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+
+    if (!headerSectionEnded && i < 20) {
+      if (line.match(/^(Dear|To Whom|Greetings)/i)) {
+        headerSectionEnded = true;
+        cleanedLines.push(lines[i]);
+        continue;
+      }
+
+      // Skip lines that match profile data
+      if (
+        line === referee.fullname ||
+        line === referee.title ||
+        line === referee.department ||
+        line === referee.institution ||
+        line === referee.email ||
+        (referee.city && referee.state && line === `${referee.city}, ${referee.state}`)
+      ) {
+        continue;
+      }
+
+      // Skip placeholder patterns
+      if (
+        line.match(/^\[.*\]$/) ||
+        line.match(/^(Your Name|Your Title|Your Position|University|Institution|Department|Address|City|State|Email|Phone|Date)/i) ||
+        line === ''
+      ) {
+        continue;
+      }
+    } else {
+      headerSectionEnded = true;
+    }
+
+    // all other lines
+    cleanedLines.push(lines[i]);
+  }
+
+  return cleanedLines.join('\n');
+}
+
+function formatCompleteLetter(content, referee) {
+  // clean any AI-generated headers
+  const cleanedContent = cleanDuplicateHeaders(content, referee);
+  const today = new Date().toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  });
+
+  // Header section
+  let header = '';
+  if (referee.fullname) header += `${referee.fullname}\n`;
+  if (referee.title) header += `${referee.title}\n`;
+  if (referee.department) header += `${referee.department}\n`;
+  if (referee.institution) header += `${referee.institution}\n`;
+  if (referee.city && referee.state) header += `${referee.city}, ${referee.state}\n`;
+  if (referee.email) header += `${referee.email}\n`;
+  header += `${today}\n\n`;
+
+  return header + replaceLetterPlaceholders(cleanedContent, referee);
+}
+
+function formatDate(date) {
+  if (!date) return null;
+  return new Date(date).toISOString();
+}
+
+// ------------------------------------------------
 // APPLICANT FLOW - Step 1: Request Letter
 // ------------------------------------------------
 
@@ -160,10 +305,7 @@ router.post('/request', auth, roleAuth('applicant'), async (req, res) => {
 // ------------------------------------------------
 // REFEREE FLOW - Step 2: View Pending Requests
 // ------------------------------------------------
-function formatDate(date) {
-  if (!date) return null;
-  return new Date(date).toISOString();
-}
+
 /**
  * @swagger
  * /api/letters/pending:
@@ -383,240 +525,8 @@ router.post('/:id/reject', auth, roleAuth('referee'), async (req, res) => {
 });
 
 // ------------------------------------------------
-// UTILITY FUNCTIONS
-// ------------------------------------------------
-
-function fillTemplate(template, values) {
-  return template.replace(/{(.*?)}/g, (_, key) => values[key] || `{${key}}`);
-}
-
-
-// ------------------------------------------------
 // REFEREE FLOW - Step 3: Generate Draft
 // ------------------------------------------------
-
-// /**
-//  * @swagger
-//  * /api/letters/{id}/generate-draft:
-//  *   post:
-//  *     summary: Generate AI draft for a letter request (referee only)
-//  *     tags: [Letters]
-//  *     parameters:
-//  *       - in: path
-//  *         name: id
-//  *         required: true
-//  *         schema:
-//  *           type: string
-//  *     requestBody:
-//  *       required: true
-//  *       content:
-//  *         application/json:
-//  *           schema:
-//  *             type: object
-//  *             properties:
-//  *               template_id:
-//  *                 type: string
-//  *                 format: uuid
-//  *               extra_context:
-//  *                 type: object
-//  *                 properties:
-//  *                   relationship:
-//  *                     type: string
-//  *                     example: "student in my Advanced AI course"
-//  *                   duration:
-//  *                     type: string
-//  *                     example: "2 years"
-//  *                   strengths:
-//  *                     type: string
-//  *                     example: "exceptional analytical thinking and leadership"
-//  *                   specific_examples:
-//  *                     type: string
-//  *                     example: "Led a team project that achieved 95% accuracy"
-//  *     responses:
-//  *       200:
-//  *         description: Draft generated successfully
-//  *       404:
-//  *         description: Letter request not found
-//  *       403:
-//  *         description: Not authorized to generate draft for this letter
-//  */
-
-// router.post('/:id/generate-draft', auth, roleAuth('referee'), async (req, res) => {
-//   try {
-//     const { template_id, extra_context = {} } = req.body;
-
-//     // Find the letter request
-//     const letter = await Letter.findOne({
-//       where: {
-//         id: req.params.id,
-//         referee_id: req.user.id,
-//         status: 'in_progress'
-//       }
-//     });
-
-//     if (!letter) {
-//       return res.status(404).json({ error: 'Letter request not found or already processed' });
-//     }
-
-//     // Get template
-//     const template = await Template.findByPk(template_id);
-//     if (!template) {
-//       return res.status(404).json({ error: 'Template not found' });
-//     }
-
-//     // Get referee info
-//     const referee = await User.findByPk(req.user.id, {
-//       attributes: ['firstName', 'lastName', 'email', 'institution', 'department', 'title']
-//     });
-
-//     // Build context for AI generation
-//     const applicantName = `${letter.applicant_data.firstName} ${letter.applicant_data.lastName}`;
-
-//     const values = {
-//       applicantName,
-//       position: letter.applicant_data.goal || letter.applicant_data.program,
-//       relationship: extra_context.relationship || 'student',
-//       duration: extra_context.duration || '1 year',
-//       strengths: extra_context.strengths || letter.applicant_data.achievements?.join(', ') || 'dedication and curiosity',
-//       examples: extra_context.specific_examples || '',
-//       additionalContext: extra_context.additional_context || '',
-
-//       // Generation parameters with defaults
-//       tone: letter.generation_parameters?.tone || 'formal',
-//       length: letter.generation_parameters?.length || 'standard',
-//       detailLevel: letter.generation_parameters?.detailLevel || 'comprehensive',
-
-//       // Referee info
-//       refereeName: `${referee.firstName} ${referee.lastName}`,
-//       refereeEmail: referee.email || '',
-//       refereeInstitution: referee.institution || 'our institution',
-//       refereeDepartment: referee.department || 'the department',
-//       refereeTitle: referee.title || 'Professor'
-//     };
-
-//     // Fill template and create prompt
-// //     const filledTemplate = fillTemplate(template.promptTemplate, values);
-// //     const prompt = `You are writing a ${template.category} recommendation letter.
-// // Referee Info: ${referee.firstName} ${referee.lastName}, ${referee.title} at ${referee.institution}
-// // Applicant Info: ${JSON.stringify(letter.applicant_data, null, 2)}
-// // Additional Context: ${JSON.stringify(extra_context, null, 2)}
-
-// // ${filledTemplate}`;
-
-// // Replace the confusing prompt with a clearer structure
-// const buildPrompt = (template, values, applicantData, extraContext) => {
-//   const filledTemplate = fillTemplate(template.promptTemplate, values);
-
-//   return `${filledTemplate}
-
-// STRICT REQUIREMENTS:
-// - Applicant: ${applicantData.firstName} ${applicantData.lastName}
-// - Purpose: ${applicantData.goal || applicantData.program}
-// - Use ONLY these achievements: ${applicantData.achievements?.join(', ') || 'None provided'}
-// - Referee context: ${JSON.stringify(extraContext, null, 2)}
-
-// Do not invent examples or use information not provided above.`;
-// };
-
-// // Use it in your endpoint
-// const prompt = buildPrompt(template, values, letter.applicant_data, extra_context);
-
-//     // Log for debugging
-//     console.log('Template ID:', template_id);
-//     console.log('Extra context:', extra_context);
-//     console.log('Letter:', letter);
-//     console.log('Prompt preview:\n', prompt);
-
-//     // Generate draft with AI
-//     let generatedText;
-//     // try {
-//     //   console.log('Generating with Ollama...');
-//     //   generatedText = await generateWithOllama(prompt);
-//     //   console.log('Generated text:', generatedText);
-//     // } catch (generationError) {
-//     //   console.error('Ollama Generation Error:', generationError.message);
-//     //   return res.status(500).json({ error: 'Failed to generate letter with Ollama.' });
-//     // }
-//     try {
-//       console.log('Generating with OpenAI...');
-//       generatedText = await generateWithOpenAI(prompt, {
-//         model: 'gpt-3.5-turbo', // or 'gpt-4' for higher quality
-//         maxTokens: 800,
-//         temperature: 0.7
-//       });
-//       console.log('Generated successfully');
-//     } catch (generationError) {
-//       console.error('OpenAI Generation Error:', generationError.message);
-//       return res.status(500).json({ error: 'Failed to generate letter with Ollama.' });
-//     }
-
-//     // Only update if generation was successful
-//     if (!generatedText) {
-//       return res.status(500).json({ error: 'No content generated from AI' });
-//     }
-
-//     // Update letter with draft content
-//     // await letter.update({
-//     //   template_id,
-//     //   letter_content: generatedText,
-//     //   model_used: 'ollama-llama2',
-//     //   status: 'draft',
-//     //   generation_attempts: (letter.generation_attempts || 0) + 1,
-//     //   generation_parameters: {
-//     //     ...letter.generation_parameters,
-//     //     extra_context
-//     //   }
-//     // });
-//     await letter.update({
-//       template_id,
-//       letter_content: generatedText.content,
-//       model_used: generatedText.model,
-//       status: 'draft',
-//       generation_attempts: (letter.generation_attempts || 0) + 1,
-//       generation_parameters: {
-//         ...letter.generation_parameters,
-//         extra_context,
-//         tokens_used: generatedText.usage?.total_tokens
-//       }
-//     });
-
-//     res.json({
-//       message: 'Draft generated successfully',
-//       // letter: {
-//       //   id: letter.id,
-//       //   content: generatedText,
-//       //   status: 'draft',
-//       //   applicant: {
-//       //     name: applicantName,
-//       //     program: letter.applicant_data.program
-//       //   },
-//       //   generated_at: letter.updated_at
-//       // }
-//       letter: {
-//         id: letter.id,
-//         content: generatedText.content,
-//         status: 'draft',
-//         applicant: {
-//           name: applicantName,
-//           program: letter.applicant_data.program
-//         },
-//         generated_at: letter,
-//         // tokens_used: generatedText.usage?.total_tokens
-//       }
-//     });
-//   } catch (err) {
-//     console.error('Error generating draft:', err);
-//     res.status(500).json({ error: 'Failed to generate draft' });
-//   }
-// });
-
-// ------------------------------------------------
-// REFEREE FLOW - Edit and Finalize
-// ------------------------------------------------
-
-
-// Updated router endpoint
-
 /**
  * @swagger
  * /api/letters/{id}/generate-draft:
@@ -844,12 +754,7 @@ Do not invent examples or use information not provided above.`;
 
     const prompt = buildPrompt(template, values, letter.applicant_data, extra_context);
 
-    // Log for debugging
-    console.log('Template ID:', template_id);
-    console.log('Selected Model:', selected_model);
-    console.log('Extra context:', extra_context);
-
-    // Generate draft with OpenRouter
+    // Generate with OpenRouter
     let generatedText;
     try {
       console.log(`Generating with OpenRouter using model: ${selected_model}...`);
@@ -864,19 +769,30 @@ Do not invent examples or use information not provided above.`;
       return res.status(500).json({ error: `Failed to generate letter: ${generationError.message}` });
     }
 
-    // Only update if generation was successful
     if (!generatedText || !generatedText.content) {
       return res.status(500).json({ error: 'No content generated from AI' });
     }
 
-    // Post-process the generated content to replace placeholders with actual profile data
-    let finalContent = generatedText.content;
+    // Format final content
+    let finalContent = formatCompleteLetter(generatedText.content, referee);
 
-    // Create header with actual referee information
-    const letterHeader = buildLetterHeader(referee);
+    let history = Array.isArray(letter.letter_history) ? letter.letter_history : [];
 
-    // Replace placeholder patterns or prepend header if needed
-    finalContent = replaceLetterPlaceholders(finalContent, referee, applicantName);
+    // If this is the first draft, save it as version 1
+    const newHistoryEntry = {
+      version: history.length + 1,
+      content: finalContent,
+      model_used: generatedText.model,
+      selected_model: selected_model,
+      generation_parameters: {
+        ...letter.generation_parameters,
+        extra_context,
+        tokens_used: generatedText.usage?.total_tokens,
+        model_selection: selected_model
+      },
+      created_at: new Date()
+    };
+    history.push(newHistoryEntry);
 
     // Update letter with draft content
     await letter.update({
@@ -885,21 +801,19 @@ Do not invent examples or use information not provided above.`;
       model_used: generatedText.model,
       selected_model: selected_model,
       status: 'draft',
+      current_version: history.length,
+      letter_history: history,
       generation_attempts: (letter.generation_attempts || 0) + 1,
-      generation_parameters: {
-        ...letter.generation_parameters,
-        extra_context,
-        tokens_used: generatedText.usage?.total_tokens,
-        model_selection: selected_model
-      }
+      generation_parameters: newHistoryEntry.generation_parameters
     });
 
     res.json({
-      message: 'Draft generated successfully',
+      message: `Draft generated successfully (Version ${history.length} created)`,
       letter: {
         id: letter.id,
         content: finalContent,
         status: 'draft',
+        version: history.length + 1,
         model_used: generatedText.model,
         selected_model: selected_model,
         applicant: {
@@ -915,99 +829,6 @@ Do not invent examples or use information not provided above.`;
     res.status(500).json({ error: 'Failed to generate draft' });
   }
 });
-
-// Helper function to build letter header
-function buildLetterHeader(referee) {
-  const today = new Date().toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
-  });
-
-  let header = '';
-
-  if (referee.fullname) header += `${referee.fullname}\n`;
-  if (referee.title) header += `${referee.title}\n`;
-  if (referee.department) header += `${referee.department}\n`;
-  if (referee.institution) header += `${referee.institution}\n`;
-  if (referee.city && referee.state) header += `${referee.city}, ${referee.state}\n`;
-  if (referee.email) header += `${referee.email}\n`;
-  header += `${today}\n`;
-
-  return header;
-}
-
-// Helper function to replace placeholders in the generated content
-function replaceLetterPlaceholders(content, referee, applicantName) {
-  let updatedContent = content;
-
-  // Replace common placeholders with actual referee information
-  updatedContent = updatedContent.replace(/\[Your Name\]/g, referee.fullname || `${referee.firstName} ${referee.lastName}`);
-  updatedContent = updatedContent.replace(/\[Your Title\]/g, referee.title || 'Professor');
-  updatedContent = updatedContent.replace(/\[Your Position\]/g, referee.title || 'Professor');
-  updatedContent = updatedContent.replace(/\[University\/Institution Name\]/g, referee.institution || 'University');
-  updatedContent = updatedContent.replace(/\[Your University\/Institution Name\]/g, referee.institution || 'University');
-  updatedContent = updatedContent.replace(/\[Your Department\]/g, referee.department || 'Department');
-  updatedContent = updatedContent.replace(/\[Department\]/g, referee.department || 'Department');
-
-  // Address placeholders
-  updatedContent = updatedContent.replace(/\[Address\]/g, '');
-  updatedContent = updatedContent.replace(/\[City, State\]/g,
-    referee.city && referee.state ? `${referee.city}, ${referee.state}` : '');
-  updatedContent = updatedContent.replace(/\[City, State\]/g,
-    referee.city && referee.state ? `${referee.city}, ${referee.state}` : '');
-
-  // Contact information
-  updatedContent = updatedContent.replace(/\[Email Address\]/g, referee.email || '');
-  updatedContent = updatedContent.replace(/\[Your Email Address\]/g, referee.email || '');
-
-  // Date placeholder
-  const today = new Date().toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
-  });
-  updatedContent = updatedContent.replace(/\[Date\]/g, today);
-  updatedContent = updatedContent.replace(/\[Today's Date\]/g, today);
-
-  // Clean up any remaining empty brackets or extra whitespace
-  updatedContent = updatedContent.replace(/\[\s*\]/g, ''); // Empty brackets
-  updatedContent = updatedContent.replace(/\n\s*\n\s*\n/g, '\n\n'); // Multiple empty lines
-
-  return updatedContent;
-}
-
-// Helper function to build complete letter with proper formatting
-function formatCompleteLetter(content, referee) {
-  const today = new Date().toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
-  });
-
-  // Build header section
-  let header = '';
-  if (referee.fullname) header += `${referee.fullname}\n`;
-  if (referee.title) header += `${referee.title}\n`;
-  if (referee.department) header += `${referee.department}\n`;
-  if (referee.institution) header += `${referee.institution}\n`;
-  if (referee.city && referee.state) header += `${referee.city}, ${referee.state}\n`;
-  if (referee.email) header += `${referee.email}\n`;
-  header += `${today}\n\n`;
-
-  // Check if content already has a proper header structure
-  const hasHeader = content.includes(referee.fullname || referee.firstName) &&
-    content.includes(referee.institution || 'University');
-
-  if (hasHeader) {
-    // Content already has header info, just replace placeholders
-    return replaceLetterPlaceholders(content, referee);
-  } else {
-    // Prepend header to content
-    return header + replaceLetterPlaceholders(content, referee);
-  }
-}
-
 
 /**
  * @swagger
@@ -1048,6 +869,10 @@ router.get('/available-models', auth, roleAuth('referee'), async (req, res) => {
     res.status(500).json({ error: 'Failed to get available models' });
   }
 });
+
+// ------------------------------------------------
+// REFEREE FLOW - Edit and Finalize
+// ------------------------------------------------
 
 /**
  * @swagger
@@ -1099,35 +924,44 @@ router.put('/:id/edit', auth, roleAuth('referee'), async (req, res) => {
     const { letter_content } = req.body;
 
     const letter = await Letter.findOne({
-      where: {
-        id: req.params.id,
-        referee_id: req.user.id,
-        status: ['draft', 'in_review']
-      }
+      where: { id: req.params.id, referee_id: req.user.id, status: ['draft', 'in_review'] }
     });
 
-    if (!letter) {
-      return res.status(404).json({ error: 'Letter not found or cannot be edited' });
+    if (!letter) return res.status(404).json({ error: 'Letter not found or cannot be edited' });
+
+    let history = Array.isArray(letter.letter_history) ? [...letter.letter_history] : [];
+    const lastVersion = history[history.length - 1];
+
+    if (shouldCreateNewVersion(lastVersion, letter_content, letter.model_used, letter.selected_model)) {
+      const newVersionEntry = makeVersionEntry(history, letter_content, letter.model_used, letter.selected_model, letter.generation_parameters);
+      history.push(newVersionEntry);
+
+      await letter.update({
+        letter_content,
+        status: 'in_review',
+        current_version: newVersionEntry.version,
+        letter_history: history
+      });
+
+      return res.json({
+        message: `Letter updated successfully (Version ${newVersionEntry.version} created)`,
+        letter: {
+          id: letter.id,
+          content: letter_content,
+          status: letter.status,
+          version: newVersionEntry.version,
+          last_edited_at: new Date()
+        }
+      });
     }
 
-    await letter.update({
-      letter_content,
-      status: 'in_review'
-    });
-
-    res.json({
-      message: 'Letter updated successfully',
-      letter: {
-        id: letter.id,
-        content: letter.letter_content,
-        status: letter.status,
-        last_edited_at: letter.updated_at
-      }
-    });
+    res.json({ message: 'No changes detected. Letter not updated.' });
   } catch (err) {
+    console.error('Error editing letter:', err);
     res.status(500).json({ error: err.message });
   }
 });
+
 
 /**
  * @swagger
@@ -1189,11 +1023,10 @@ router.post('/:id/approve', auth, roleAuth('referee'), async (req, res) => {
       status: 'completed'
     });
 
-    // Here you might want to notify the applicant
     // await notifyApplicant(letter);
 
     res.json({
-      message: 'Letter approved and completed',
+      message: 'Letter approved and marked as completed.',
       letter: {
         id: letter.id,
         status: letter.status,
@@ -1475,7 +1308,12 @@ router.get('/:id', auth, async (req, res) => {
       referee: letter.referee,
       template: letter.template,
       created_at: letter.created_at,
-      completed_at: letter.status === 'completed' ? letter.updated_at : null
+      completed_at: letter.status === 'completed' ? letter.updated_at : null,
+      current_version: letter.current_version,
+      generation_parameters: letter.generation_parameters,
+      letter_content: isReferee || letter.status === 'completed'
+        ? letter.letter_content
+        : null,
     };
 
     if (isReferee || letter.status === 'completed') {
@@ -1489,6 +1327,12 @@ router.get('/:id', auth, async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch letter' });
   }
 });
+
+
+
+// ------------------------------------------------
+// REFEREE FLOW - Regenerate & Restore Versions
+// ------------------------------------------------
 
 /**
  * @swagger
@@ -1551,7 +1395,6 @@ router.post('/:id/regenerate', auth, roleAuth('referee'), async (req, res) => {
   try {
     const { type, selected_model, extra_context } = req.body;
 
-    // Find the letter
     const letter = await Letter.findOne({
       where: {
         id: req.params.id,
@@ -1564,67 +1407,30 @@ router.post('/:id/regenerate', auth, roleAuth('referee'), async (req, res) => {
       return res.status(404).json({ error: 'Letter not found or cannot be regenerated' });
     }
 
-    // Save current version to history before regenerating
-    const currentHistory = letter.letter_history || [];
-    const newHistoryEntry = {
-      version: currentHistory.length + 1,
-      content: letter.letter_content,
-      model_used: letter.model_used,
-      selected_model: letter.selected_model,
-      generation_parameters: letter.generation_parameters,
-      created_at: new Date(),
-      tokens_used: letter.generation_parameters?.tokens_used
-    };
-    currentHistory.push(newHistoryEntry);
-    console.log(`Saved version ${newHistoryEntry} to history.`);
+    let history = Array.isArray(letter.letter_history) ? [...letter.letter_history] : [];
 
-    // Get template and referee info
+    // Template + referee info
     const template = await Template.findByPk(letter.template_id);
+    if (!template) return res.status(404).json({ error: 'Template not found' });
+
     const referee = await User.findByPk(req.user.id, {
-      attributes: [
-        'firstName', 'lastName', 'email', 'institution', 'department', 'title',
-        'fullname', 'city', 'state', 'university_logo_url'
-      ]
+      attributes: ['firstName', 'lastName', 'email', 'institution', 'department', 'title', 'fullname', 'city', 'state']
     });
 
     // Determine regeneration settings
-    let regenerationSettings;
-    let newModel;
-    let newContext;
+    let regenerationSettings = { ...letter.generation_parameters };
+    let newModel = letter.selected_model;
+    let newContext = letter.generation_parameters?.extra_context || {};
 
-    switch (type) {
-      case 'same_settings':
-        // Use exact same settings as last generation
-        regenerationSettings = letter.generation_parameters;
-        newModel = letter.selected_model;
-        newContext = regenerationSettings?.extra_context || {};
-        break;
-
-      case 'new_model':
-        // Keep same context, change model
-        if (!selected_model) {
-          return res.status(400).json({ error: 'selected_model is required for new_model type' });
-        }
-        regenerationSettings = letter.generation_parameters;
-        newModel = selected_model;
-        newContext = regenerationSettings?.extra_context || {};
-        break;
-
-      case 'new_context':
-        // New context provided
-        if (!extra_context) {
-          return res.status(400).json({ error: 'extra_context is required for new_context type' });
-        }
-        regenerationSettings = { ...letter.generation_parameters };
-        newModel = letter.selected_model;
-        newContext = extra_context;
-        break;
-
-      default:
-        return res.status(400).json({ error: 'Invalid regeneration type' });
+    if (type === 'new_model') {
+      if (!selected_model) return res.status(400).json({ error: 'selected_model is required' });
+      newModel = selected_model;
+    } else if (type === 'new_context') {
+      if (!extra_context) return res.status(400).json({ error: 'extra_context is required' });
+      newContext = extra_context;
     }
 
-    // Build prompt using same logic as original generation
+    // Build prompt
     const applicantName = `${letter.applicant_data.firstName} ${letter.applicant_data.lastName}`;
     const values = {
       applicantName,
@@ -1637,7 +1443,6 @@ router.post('/:id/regenerate', auth, roleAuth('referee'), async (req, res) => {
       tone: regenerationSettings?.tone || 'formal',
       length: regenerationSettings?.length || 'standard',
       detailLevel: regenerationSettings?.detailLevel || 'comprehensive',
-
       refereeName: referee.fullname || `${referee.firstName} ${referee.lastName}`,
       refereeEmail: referee.email || '',
       refereeInstitution: referee.institution || 'our institution',
@@ -1647,71 +1452,65 @@ router.post('/:id/regenerate', auth, roleAuth('referee'), async (req, res) => {
       refereeState: referee.state || '',
     };
 
-    const buildPrompt = (template, values, applicantData, extraContext) => {
-      const filledTemplate = fillTemplate(template.promptTemplate, values);
+    const prompt = fillTemplate(template.promptTemplate, values);
 
-      return `${filledTemplate}
-
-STRICT REQUIREMENTS:
-- Applicant: ${applicantData.firstName} ${applicantData.lastName}
-- Purpose: ${applicantData.goal || applicantData.program}
-- Use ONLY these achievements: ${applicantData.achievements?.join(', ') || 'None provided'}
-- Referee context: ${JSON.stringify(extraContext, null, 2)}
-
-Do not invent examples or use information not provided above.`;
-    };
-
-    const prompt = buildPrompt(template, values, letter.applicant_data, newContext);
-
-    // Generate new content
-    console.log(`Regenerating letter with model: ${newModel}...`);
+    // Generate
     const generatedText = await generateWithOpenRouter(prompt, {
       model: newModel,
       maxTokens: 800,
       temperature: 0.7
     });
 
-    if (!generatedText || !generatedText.content) {
-      return res.status(500).json({ error: 'No content generated from AI' });
-    }
+    if (!generatedText?.content) return res.status(500).json({ error: 'No content generated from AI' });
 
     const finalContent = formatCompleteLetter(generatedText.content, referee);
 
-    // Update letter with new content and increment version
-    await letter.update({
-      letter_content: finalContent,
-      model_used: generatedText.model,
-      selected_model: newModel,
-      current_version: currentHistory.length + 1,
-      letter_history: currentHistory,
-      generation_attempts: (letter.generation_attempts || 0) + 1,
-      generation_parameters: {
-        ...regenerationSettings,
-        extra_context: newContext,
-        tokens_used: generatedText.usage?.total_tokens,
-        model_selection: newModel,
-        regeneration_type: type
-      }
-    });
+    // Save if different
+    const lastVersion = history[history.length - 1];
+    if (shouldCreateNewVersion(lastVersion, finalContent, generatedText.model, newModel)) {
+      const newVersionEntry = makeVersionEntry(
+        history,
+        finalContent,
+        generatedText.model,
+        newModel,
+        {
+          ...regenerationSettings,
+          extra_context: newContext,
+          tokens_used: generatedText.usage?.total_tokens,
+          model_selection: newModel,
+          regeneration_type: type
+        }
+      );
+      history.push(newVersionEntry);
 
-    res.json({
-      message: 'Letter regenerated successfully',
-      letter: {
-        id: letter.id,
-        content: finalContent,
-        status: letter.status,
+      await letter.update({
+        letter_content: finalContent,
         model_used: generatedText.model,
         selected_model: newModel,
-        version: currentHistory.length + 1,
-        applicant: {
-          name: applicantName,
-          program: letter.applicant_data.program
-        },
-        regenerated_at: new Date(),
-        tokens_used: generatedText.usage?.total_tokens,
-        previous_versions_count: currentHistory.length
-      }
-    });
+        current_version: newVersionEntry.version,
+        letter_history: history,
+        generation_attempts: (letter.generation_attempts || 0) + 1,
+        generation_parameters: newVersionEntry.generation_parameters
+      });
+
+      return res.json({
+        message: `Letter regenerated successfully using ${newModel} (Version ${newVersionEntry.version} created)`,
+        letter: {
+          id: letter.id,
+          content: finalContent,
+          status: letter.status,
+          model_used: generatedText.model,
+          selected_model: newModel,
+          version: newVersionEntry.version,
+          applicant: { name: applicantName, program: letter.applicant_data.program },
+          regenerated_at: new Date(),
+          tokens_used: generatedText.usage?.total_tokens,
+          previous_versions_count: history.length - 1
+        }
+      });
+    }
+
+    res.json({ message: `Regeneration produced no changes. Current version remains the same.` });
   } catch (err) {
     console.error('Error regenerating letter:', err);
     res.status(500).json({ error: 'Failed to regenerate letter' });
@@ -1927,10 +1726,63 @@ router.get('/:id/history/:version', auth, roleAuth('referee'), async (req, res) 
  *       404:
  *         description: Letter or version not found
  */
+
 router.post('/:id/restore/:version', auth, roleAuth('referee'), async (req, res) => {
   try {
     const { version } = req.params;
 
+    const letter = await Letter.findOne({
+      where: { id: req.params.id, referee_id: req.user.id, status: ['draft', 'in_review'] }
+    });
+
+    if (!letter) return res.status(404).json({ error: 'Letter not found or cannot be modified' });
+
+    let history = Array.isArray(letter.letter_history) ? [...letter.letter_history] : [];
+    const versionToRestore = history.find(entry => entry.version === parseInt(version));
+
+    if (!versionToRestore) return res.status(404).json({ error: 'Version not found' });
+
+    await letter.update({
+      letter_content: versionToRestore.content,
+      model_used: versionToRestore.model_used,
+      selected_model: versionToRestore.selected_model,
+      current_version: versionToRestore.version,
+      generation_parameters: {
+        ...versionToRestore.generation_parameters,
+        restored_from_version: parseInt(version),
+        restored_at: new Date()
+      }
+    });
+
+    res.json({
+      message: `Version ${version} restored successfully (New Version created)`,
+      letter: {
+        id: letter.id,
+        content: versionToRestore.content,
+        version: versionToRestore.version,
+        restored_from_version: parseInt(version)
+      }
+    });
+  } catch (err) {
+    console.error('Error restoring letter version:', err);
+    res.status(500).json({ error: `You are already viewing Version ${version}. No restore performed.` });
+  }
+});
+
+// ------------------------------------------------
+// LEGACY/ADMIN ROUTES 
+// ------------------------------------------------
+
+// DELETE - for admin or cleanup
+/**
+ * @swagger
+ * /api/letters/{id}:
+ *   delete:
+ *     summary: Delete a letter (referee only, draft/in_review only)
+ *     tags: [Letters]
+ */
+router.delete('/:id', auth, roleAuth('referee'), async (req, res) => {
+  try {
     const letter = await Letter.findOne({
       where: {
         id: req.params.id,
@@ -1940,76 +1792,17 @@ router.post('/:id/restore/:version', auth, roleAuth('referee'), async (req, res)
     });
 
     if (!letter) {
-      return res.status(404).json({ error: 'Letter not found or cannot be modified' });
-    }
-
-    const history = letter.letter_history || [];
-    const versionToRestore = history.find(entry => entry.version === parseInt(version));
-
-    if (!versionToRestore) {
-      return res.status(404).json({ error: 'Version not found' });
-    }
-
-    // Save current state to history before restoring
-    const currentHistory = [...history];
-    const newHistoryEntry = {
-      version: currentHistory.length + 1,
-      content: letter.letter_content,
-      model_used: letter.model_used,
-      selected_model: letter.selected_model,
-      generation_parameters: letter.generation_parameters,
-      created_at: new Date()
-    };
-    currentHistory.push(newHistoryEntry);
-
-    // Restore the selected version
-    await letter.update({
-      letter_content: versionToRestore.content,
-      model_used: versionToRestore.model_used,
-      selected_model: versionToRestore.selected_model,
-      current_version: currentHistory.length + 1,
-      letter_history: currentHistory,
-      generation_parameters: {
-        ...versionToRestore.generation_parameters,
-        restored_from_version: parseInt(version),
-        restored_at: new Date()
-      }
-    });
-
-    res.json({
-      message: `Version ${version} restored successfully`,
-      letter: {
-        id: letter.id,
-        content: versionToRestore.content,
-        version: currentHistory.length + 1,
-        restored_from_version: parseInt(version)
-      }
-    });
-  } catch (err) {
-    console.error('Error restoring letter version:', err);
-    res.status(500).json({ error: 'Failed to restore version' });
-  }
-});
-
-// ------------------------------------------------
-// LEGACY/ADMIN ROUTES 
-// ------------------------------------------------
-
-// DELETE - for admin or cleanup
-router.delete('/:id', auth, async (req, res) => {
-  try {
-    const letter = await Letter.findByPk(req.params.id);
-    if (!letter) return res.status(404).json({ error: 'Letter not found' });
-
-    // Check authorization
-    if (req.user.role !== 'admin' && letter.referee_id !== req.user.id) {
-      return res.status(403).json({ error: 'Not authorized' });
+      return res.status(404).json({
+        error: 'Letter not found or cannot be deleted (completed letters cannot be deleted)'
+      });
     }
 
     await letter.destroy();
+
     res.json({ message: 'Letter deleted successfully' });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Error deleting letter:', err);
+    res.status(500).json({ error: 'Failed to delete letter' });
   }
 });
 

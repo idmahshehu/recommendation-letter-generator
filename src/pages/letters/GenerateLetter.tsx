@@ -50,7 +50,7 @@ const GenerateLetter = () => {
     const [templates, setTemplates] = useState<Template[]>([]);
     const [availableModels, setAvailableModels] = useState<AIModel[]>([]);
     const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
-    const [selectedModel, setSelectedModel] = useState<string>('llama-3.1-8b'); // Default to free model
+    const [selectedModel, setSelectedModel] = useState<string>('llama-3.1-8b'); 
     const [generatedContent, setGeneratedContent] = useState<string>('');
     const [showContent, setShowContent] = useState(false);
     const [alert, setAlert] = useState<Alert | null>(null);
@@ -124,9 +124,9 @@ const GenerateLetter = () => {
         ];
 
         for (const { field, label } of requiredFields) {
-            const value = field === 'selectedTemplateId' ? selectedTemplateId : 
-                         field === 'selectedModel' ? selectedModel : 
-                         context[field as keyof typeof context];
+            const value = field === 'selectedTemplateId' ? selectedTemplateId :
+                field === 'selectedModel' ? selectedModel :
+                    context[field as keyof typeof context];
             if (!value?.trim()) {
                 showAlert(`Please select/fill in the ${label} field.`, 'error');
                 return false;

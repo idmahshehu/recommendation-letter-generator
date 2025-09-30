@@ -175,7 +175,7 @@ const EditLetterPage: React.FC = () => {
     setContent(newContent);
     setOriginalContent(newContent);
     setWordCount(countWords(newContent));
-    
+
     // Update letter data to reflect new generation parameters
     if (letter) {
       setLetter({
@@ -189,7 +189,7 @@ const EditLetterPage: React.FC = () => {
         }
       });
     }
-    
+
     showAlert(`Letter regenerated successfully with ${metadata.selected_model || 'selected model'}`, 'success');
   };
 
@@ -197,7 +197,7 @@ const EditLetterPage: React.FC = () => {
     setContent(newContent);
     setOriginalContent(newContent);
     setWordCount(countWords(newContent));
-    
+
     // Update letter data to reflect restoration
     if (letter) {
       setLetter({
@@ -209,7 +209,7 @@ const EditLetterPage: React.FC = () => {
         }
       });
     }
-    
+
     showAlert(`Version restored successfully`, 'success');
   };
 
@@ -305,55 +305,55 @@ const EditLetterPage: React.FC = () => {
         {/* Page Header */}
         <div className='flex justify-between items-start mb-8'>
           <div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            Edit Letter for {letter.applicant_data.firstName} {letter.applicant_data.lastName}
-          </h1>
-          <p className="text-gray-600">Review and edit the letter content before final approval</p>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">
+              Edit Letter for {letter.applicant_data.firstName} {letter.applicant_data.lastName}
+            </h1>
+            <p className="text-gray-600">Review and edit the letter content before final approval</p>
           </div>
 
           <div className="flex space-x-3">
-                        {letter.status === 'pending' && (
-                            <button
-                                onClick={() => navigate(`/letters/${id}/generate`)}
-                                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            >
-                                <svg className="w-4 h-4 mr-2 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3l14 9-14 9V3z" />
-                                </svg>
-                                Generate Draft
-                            </button>
-                        )}
+            {letter.status === 'pending' && (
+              <button
+                onClick={() => navigate(`/letters/${id}/generate`)}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <svg className="w-4 h-4 mr-2 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3l14 9-14 9V3z" />
+                </svg>
+                Generate Draft
+              </button>
+            )}
 
-                        {(letter.status === 'draft' || letter.status === 'completed') && (
-                            <>
-                                <button
-                                    // onClick={handleEdit}
-                                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                >
-                                    <svg className="w-4 h-4 mr-2 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                    </svg>
-                                    Edit
-                                </button>
+            {(letter.status === 'draft' || letter.status === 'completed') && (
+              <>
+                <button
+                  // onClick={handleEdit}
+                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <svg className="w-4 h-4 mr-2 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                  Edit
+                </button>
 
-                                <button
-                                    // onClick={handleDownload}
-                                    className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500"
-                                >
-                                    <svg className="w-4 h-4 mr-2 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                    </svg>
-                                    Download
-                                </button>
-                            </>
-                        )}
-           </div>
-        
+                <button
+                  // onClick={handleDownload}
+                  className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500"
+                >
+                  <svg className="w-4 h-4 mr-2 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  Download
+                </button>
+              </>
+            )}
+          </div>
+
         </div>
-        
+
 
         {/* Alert */}
-        {alert && (
+        {/* {alert && (
           <div className={`rounded-lg p-4 mb-6 ${alert.type === 'success'
             ? 'bg-green-50 border border-green-200 text-green-800'
             : alert.type === 'error'
@@ -362,7 +362,21 @@ const EditLetterPage: React.FC = () => {
             }`}>
             {alert.message}
           </div>
+        )} */}
+        {alert && (
+          <div className={`
+    fixed bottom-8 left-1/2 transform -translate-x-1/2
+    px-8 py-4 rounded-xl shadow-2xl
+    text-white text-base font-semibold
+    ${alert.type === 'success' ? 'bg-green-600' : ''}
+    ${alert.type === 'error' ? 'bg-red-500' : ''}
+    ${alert.type === 'info' ? 'bg-blue-500' : ''}
+    animate-fade-in-up
+  `}>
+            {alert.message}
+          </div>
         )}
+
 
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
           {/* Left Sidebar - Info Cards */}
@@ -551,7 +565,7 @@ const EditLetterPage: React.FC = () => {
                       </svg>
                       Regenerate
                     </button>
-                    
+
                     <button
                       type="button"
                       onClick={handleSave}
