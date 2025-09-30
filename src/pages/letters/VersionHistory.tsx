@@ -14,12 +14,14 @@ interface VersionHistoryProps {
   letterId: string;
   currentVersion: number;
   onVersionRestored: (newContent: string, version: number) => void;
+  showAlert: (message: string, type: 'success' | 'error' | 'info') => void;
 }
 
 const VersionHistory: React.FC<VersionHistoryProps> = ({
   letterId,
   currentVersion,
-  onVersionRestored
+  onVersionRestored,
+  showAlert
 }) => {
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [selectedVersion, setSelectedVersion] = useState<number | ''>('');
@@ -27,6 +29,8 @@ const VersionHistory: React.FC<VersionHistoryProps> = ({
   const [previewContent, setPreviewContent] = useState('');
   const [loading, setLoading] = useState(false);
   const [restoring, setRestoring] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     fetchHistory();
@@ -65,19 +69,51 @@ const VersionHistory: React.FC<VersionHistoryProps> = ({
 
   const handleRestore = async () => {
     if (!selectedVersion) return;
-
     setRestoring(true);
+
     try {
       const response = await api.post(`/letters/${letterId}/restore/${selectedVersion}`);
       onVersionRestored(response.data.letter.content, response.data.letter.version);
       setSelectedVersion('');
       setShowPreview(false);
-      await fetchHistory(); // Refresh history
+      await fetchHistory();
     } catch (error) {
       console.error('Failed to restore version:', error);
       alert('Failed to restore version. Please try again.');
     } finally {
       setRestoring(false);
+    }
+  };
+
+  const handleClearHistory = async () => {
+    if (!window.confirm('Clear all version history? The current version will be kept as Version 1.')) return;
+    setClearing(true);
+
+    try {
+      await api.delete(`/letters/${letterId}/history`);
+      await fetchHistory();
+      showAlert('Version history cleared', 'success');
+    } catch (error) {
+      console.error('Failed to clear history:', error);
+      showAlert('Failed to clear history', 'error'); 
+    } finally {
+      setClearing(false);
+    }
+  };
+
+  const handleDeleteLetter = async () => {
+    if (!window.confirm('Are you sure you want to delete this letter? This action cannot be undone.')) return;
+    setDeleting(true);
+
+    try {
+      await api.delete(`/letters/${letterId}`);
+      showAlert('Letter deleted successfully', 'success');  
+      window.location.href = '/letters'; // redirect after delete
+    } catch (error) {
+      console.error('Failed to delete letter:', error);
+      showAlert('Failed to delete letter', 'error');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -91,17 +127,35 @@ const VersionHistory: React.FC<VersionHistoryProps> = ({
   };
 
   if (history.length === 0) {
-    return null; 
+    return null;
   }
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-      <div className="bg-purple-50 px-4 py-3 border-b border-gray-200">
-        <h3 className="font-semibold text-gray-900">Version History</h3>
-        <p className="text-xs text-gray-600 mt-1">Current: Version {currentVersion}</p>
+    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden w-full">
+      <div className="bg-purple-50 px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+        <div>
+          <h3 className="font-semibold text-gray-900">Version History</h3>
+          <p className="text-xs text-gray-600 mt-1">Current: Version {currentVersion}</p>
+        </div>
+        <div className="flex space-x-2">
+          <button
+            onClick={handleClearHistory}
+            disabled={clearing}
+            className="px-3 py-1 text-xs bg-orange-100 text-orange-700 rounded hover:bg-orange-200"
+          >
+            {clearing ? 'Clearing...' : 'Clear History'}
+          </button>
+          <button
+            onClick={handleDeleteLetter}
+            disabled={deleting}
+            className="px-3 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200"
+          >
+            {deleting ? 'Deleting...' : 'Delete Letter'}
+          </button>
+        </div>
       </div>
-      
-      <div className="p-4 space-y-4">
+
+      <div className="p-6 space-y-4">
         {/* Version Selector */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -129,23 +183,23 @@ const VersionHistory: React.FC<VersionHistoryProps> = ({
           </div>
         )}
 
-        {/* Preview and Actions */}
+        {/* Preview + Restore */}
         {showPreview && !loading && (
           <div className="space-y-3">
             <div className="bg-gray-50 rounded-md p-3">
               <h4 className="text-xs font-medium text-gray-700 mb-2">Preview:</h4>
               <p className="text-xs text-gray-600 leading-relaxed">
-                {previewContent.substring(0, 200)}...
+                {previewContent.substring(0, 300)}...
               </p>
             </div>
-            
+
             <div className="flex space-x-2">
               <button
                 onClick={() => {
                   setSelectedVersion('');
                   setShowPreview(false);
                 }}
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 hover:bg-gray-50"
                 disabled={restoring}
               >
                 Cancel
@@ -153,27 +207,15 @@ const VersionHistory: React.FC<VersionHistoryProps> = ({
               <button
                 onClick={handleRestore}
                 disabled={restoring}
-                className="flex-1 px-3 py-2 bg-purple-600 text-white rounded-md text-sm hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:opacity-50"
+                className="flex-1 px-3 py-2 bg-purple-600 text-white rounded-md text-sm hover:bg-purple-700 disabled:opacity-50"
               >
-                {restoring ? (
-                  <div className="flex items-center justify-center">
-                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mr-1"></div>
-                    Restoring...
-                  </div>
-                ) : (
-                  'Restore'
-                )}
+                {restoring ? 'Restoring...' : 'Restore'}
               </button>
             </div>
-
-            {/* Confirmation Note */}
-            <p className="text-xs text-gray-500 text-center">
-              Current content will be saved before restoring
-            </p>
           </div>
         )}
 
-        {/* History Summary */}
+        {/* Summary */}
         <div className="border-t border-gray-200 pt-3">
           <div className="text-xs text-gray-500 space-y-1">
             <div className="flex justify-between">

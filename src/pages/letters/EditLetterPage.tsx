@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
@@ -116,6 +116,16 @@ const EditLetterPage: React.FC = () => {
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [hasUnsavedChanges]);
+
+  // Content
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+      textareaRef.current.style.height = textareaRef.current.scrollHeight + "px";
+    }
+  }, [content]);
 
   const countWords = (text: string): number => {
     return text.trim().split(/\s+/).filter(word => word.length > 0).length;
@@ -323,30 +333,6 @@ const EditLetterPage: React.FC = () => {
                 Generate Draft
               </button>
             )}
-
-            {(letter.status === 'draft' || letter.status === 'completed') && (
-              <>
-                <button
-                  // onClick={handleEdit}
-                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <svg className="w-4 h-4 mr-2 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                  </svg>
-                  Edit
-                </button>
-
-                <button
-                  // onClick={handleDownload}
-                  className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500"
-                >
-                  <svg className="w-4 h-4 mr-2 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                  Download
-                </button>
-              </>
-            )}
           </div>
 
         </div>
@@ -481,13 +467,6 @@ const EditLetterPage: React.FC = () => {
                   </div>
                 </div>
               )}
-
-              {/* Version History */}
-              <VersionHistory
-                letterId={id!}
-                currentVersion={letter.current_version || 1}
-                onVersionRestored={handleVersionRestored}
-              />
             </div>
           </div>
 
@@ -517,13 +496,14 @@ const EditLetterPage: React.FC = () => {
               {/* Editor Content */}
               <div className="p-6">
                 <textarea
+                  ref={textareaRef}
                   value={content}
                   onChange={(e) => setContent(e.target.value)}
                   className="w-full p-4 border border-gray-300 rounded-md
     focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500
     font-serif text-sm leading-relaxed resize-none"
                   placeholder="Enter your letter content here..."
-                  rows={Math.max(10, content.split('\n').length + 2)}
+                  rows={Math.max(15, content.split('\n').length + 2)}
                 />
 
                 {/* Editor Actions */}
@@ -601,6 +581,15 @@ const EditLetterPage: React.FC = () => {
                   </div>
                 </div>
               </div>
+            </div>
+            <div className='mt-6'>
+              {/* Version History */}
+              <VersionHistory
+                letterId={id!}
+                currentVersion={letter.current_version || 1}
+                onVersionRestored={handleVersionRestored}
+                showAlert={showAlert}
+              />
             </div>
           </div>
         </div>

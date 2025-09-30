@@ -121,7 +121,7 @@ module.exports = (sequelize, DataTypes) => {
         timestamps: true,
         underscored: true,
 
-        indexes: [ // optimize query performance, Each object in the array creates an index on the specified field(s)
+        indexes: [
             {
                 fields: ['category']
             },

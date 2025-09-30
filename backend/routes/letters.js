@@ -1773,37 +1773,202 @@ router.post('/:id/restore/:version', auth, roleAuth('referee'), async (req, res)
 // LEGACY/ADMIN ROUTES 
 // ------------------------------------------------
 
-// DELETE - for admin or cleanup
+// DELETE
 /**
  * @swagger
  * /api/letters/{id}:
  *   delete:
- *     summary: Delete a letter (referee only, draft/in_review only)
+ *     summary: Delete a letter (referee only - drafts, in_review, or rejected)
+ *     description: 
+ *       Deletes a letter if it is still in draft, in_review, or rejected status. 
+ *       Completed letters cannot be deleted for audit and compliance reasons.
  *     tags: [Letters]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: The ID of the letter to delete
+ *     responses:
+ *       200:
+ *         description: Letter deleted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Letter deleted successfully"
+ *                 id:
+ *                   type: string
+ *                   format: uuid
+ *       404:
+ *         description: Letter not found or cannot be deleted
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: "Letter not found or cannot be deleted. Completed letters are permanent."
+ *       403:
+ *         description: Forbidden – only referees can delete letters
+ *       500:
+ *         description: Internal server error
  */
+
 router.delete('/:id', auth, roleAuth('referee'), async (req, res) => {
   try {
     const letter = await Letter.findOne({
       where: {
         id: req.params.id,
         referee_id: req.user.id,
-        status: ['draft', 'in_review']
+        status: {
+          [Op.in]: ['draft', 'in_review', 'rejected']
+        }
       }
     });
 
     if (!letter) {
-      return res.status(404).json({
-        error: 'Letter not found or cannot be deleted (completed letters cannot be deleted)'
+      return res.status(404).json({ 
+        error: 'Letter not found or cannot be deleted. Completed letters are permanent.' 
       });
     }
 
-    await letter.destroy();
+    // Soft delete: mark as deleted
+    await letter.update({ status: 'deleted' });
+    // await letter.destroy(); or hard-delete??
 
-    res.json({ message: 'Letter deleted successfully' });
+    res.json({ 
+      message: 'Letter soft-deleted successfully',
+      id: req.params.id,
+      status: 'deleted'
+    });
   } catch (err) {
     console.error('Error deleting letter:', err);
     res.status(500).json({ error: 'Failed to delete letter' });
   }
 });
+
+/**
+ * @swagger
+ * /api/letters/{id}/history:
+ *   delete:
+ *     summary: Clear all version history (keeps current version as version 1)
+ *     description: 
+ *       Removes all previous versions of the letter but retains the current content, 
+ *       saved as version 1. Only allowed while the letter is in draft or in_review status.
+ *     tags: [Letters]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: The ID of the letter whose history will be cleared
+ *     responses:
+ *       200:
+ *         description: Version history cleared successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Version history cleared successfully"
+ *                 current_version:
+ *                   type: integer
+ *                   example: 1
+ *                 history:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       version:
+ *                         type: integer
+ *                         example: 1
+ *                       content:
+ *                         type: string
+ *                         description: Current letter content
+ *                       model_used:
+ *                         type: string
+ *                         example: "openai/gpt-4"
+ *                       selected_model:
+ *                         type: string
+ *                         example: "gpt-4"
+ *                       created_at:
+ *                         type: string
+ *                         format: date-time
+ *                       generation_parameters:
+ *                         type: object
+ *                         description: Parameters used in the generation
+ *       404:
+ *         description: Letter not found or cannot be modified
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: "Letter not found or cannot be modified"
+ *       403:
+ *         description: Forbidden – only referees can clear letter history
+ *       500:
+ *         description: Internal server error
+ */
+
+router.delete('/:id/history', auth, roleAuth('referee'), async (req, res) => {
+  try {
+    const letter = await Letter.findOne({
+      where: {
+        id: req.params.id,
+        referee_id: req.user.id,
+        status: {
+          [Op.in]: ['draft', 'in_review']
+        }
+      }
+    });
+
+    if (!letter) {
+      return res.status(404).json({ error: 'Letter not found or cannot be modified' });
+    }
+
+    // Reset history but keep current state as version 1
+    const newHistory = [{
+      version: 1,
+      content: letter.letter_content,
+      model_used: letter.model_used,
+      selected_model: letter.selected_model,
+      generation_parameters: letter.generation_parameters,
+      created_at: new Date()
+    }];
+
+    await letter.update({
+      letter_history: newHistory,
+      current_version: 1
+    });
+
+    res.json({
+      message: 'Version history cleared successfully',
+      current_version: 1,
+      history: newHistory
+    });
+  } catch (err) {
+    console.error('Error clearing history:', err);
+    res.status(500).json({ error: 'Failed to clear history' });
+  }
+});
+
 
 module.exports = router;
