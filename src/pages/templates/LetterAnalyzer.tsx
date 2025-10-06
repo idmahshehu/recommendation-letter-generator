@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Upload, FileText, Loader2, CheckCircle, AlertCircle, Download } from 'lucide-react';
 import { api } from '../../services/api';
+import { Navigation } from '../../components/layout/Navigation';
+import { useAuth } from '../../context/AuthContext';
 
 // interface AnalysisResult {
 //     introduction_pattern: string;
@@ -34,6 +36,8 @@ const LetterAnalyzer: React.FC<LetterAnalyzerProps> = ({ token }) => {
     const [templateDescription, setTemplateDescription] = useState('');
     const [creatingTemplate, setCreatingTemplate] = useState(false);
     const [templateCreated, setTemplateCreated] = useState(false);
+    const { user } = useAuth();
+    
 
     const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
         const selectedFile = event.target.files?.[0];
@@ -116,7 +120,10 @@ const LetterAnalyzer: React.FC<LetterAnalyzerProps> = ({ token }) => {
     };
 
     return (
-        <div className="max-w-4xl mx-auto p-6">
+        <div className="bg-gray-50 min-h-screen">
+            <Navigation user={user} />
+            <div className="max-w-4xl mx-auto p-6">
+
             <div className="mb-8">
                 <h1 className="text-3xl font-bold text-gray-900 mb-2">Letter Style Analyzer</h1>
                 <p className="text-gray-600">
@@ -352,6 +359,7 @@ const LetterAnalyzer: React.FC<LetterAnalyzerProps> = ({ token }) => {
                     </div>
                 </div>
             )}
+            </div>
         </div>
     );
 };

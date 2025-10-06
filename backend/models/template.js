@@ -39,7 +39,6 @@
  */
 module.exports = (sequelize, DataTypes) => {
 
-    //Template model
     const Template = sequelize.define('Template', {
         id: {
             type: DataTypes.UUID,
@@ -47,7 +46,6 @@ module.exports = (sequelize, DataTypes) => {
             primaryKey: true
         },
 
-        // Basic template info
         name: {
             type: DataTypes.STRING,
             allowNull: false,
@@ -61,21 +59,20 @@ module.exports = (sequelize, DataTypes) => {
             allowNull: true
         },
 
-        // Template categorization
+        // categorization
         category: {
             type: DataTypes.ENUM('academic', 'job', 'scholarship', 'general'),
             allowNull: false,
             defaultValue: 'general'
         },
 
-        // The actual prompt template with placeholders
+        // The actual prompt template
         promptTemplate: {
             type: DataTypes.TEXT,
             allowNull: false,
             field: 'prompt_template'
         },
 
-        // Template parameters (JSON for flexibility)
         defaultParameters: {
             type: DataTypes.JSONB,
             allowNull: true,
@@ -110,7 +107,6 @@ module.exports = (sequelize, DataTypes) => {
             field: 'is_active'
         },
 
-        // Usage tracking (for analytics later)
         usageCount: {
             type: DataTypes.INTEGER,
             defaultValue: 0,

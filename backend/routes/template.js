@@ -76,9 +76,9 @@ router.post('/create-from-analysis', auth, roleAuth('referee'), async (req, res)
         const template = await Template.create({
             ...templateData,
             description: templateDescription || 'Template created from letter analysis',
-            created_by: req.user.id,
-            is_system_template: false,
-            is_active: true,
+            createdBy: req.user.id,
+            isSystemTemplate: false,
+            isActive: true,
             usage_count: 0
         });
 
@@ -126,7 +126,7 @@ router.get('/', auth, async (req, res) => {
     try {
         const { category, includeUserTemplates } = req.query;
 
-        let conditions = { is_active: true };
+        let conditions = { isActive: true };
 
         if (category) {
             conditions.category = category;
@@ -137,7 +137,7 @@ router.get('/', auth, async (req, res) => {
         if (includeUserTemplates === 'true') {
             // system templates and user's own templates
             const systemTemplates = await Template.findAll({
-                where: { ...conditions, is_system_template: true },
+                where: { ...conditions, isSystemTemplate: true },
                 include: [
                     {
                         model: User,
@@ -148,7 +148,7 @@ router.get('/', auth, async (req, res) => {
             });
 
             const userTemplates = await Template.findAll({
-                where: { ...conditions, created_by: req.user.id },
+                where: { ...conditions, createdBy: req.user.id },
                 include: [
                     {
                         model: User,
@@ -163,7 +163,7 @@ router.get('/', auth, async (req, res) => {
         } else {
             // system templates (default)
             templates = await Template.findAll({
-                where: { ...conditions, is_system_template: true },
+                where: { ...conditions, isSystemTemplate: true },
                 include: [
                     {
                         model: User,
@@ -202,7 +202,7 @@ router.get('/:id', auth, async (req, res) => {
         const template = await Template.findOne({
             where: {
                 id: req.params.id,
-                is_active: true
+                isActive: true
             },
             include: [
                 {
@@ -269,9 +269,9 @@ router.post('/', auth, roleAuth('referee'), async (req, res) => {
                 length: 'standard',
                 detailLevel: 'standard'
             },
-            created_by: req.user.id,
-            is_system_template: false,
-            is_active: true
+            createdBy: req.user.id,
+            isSystemTemplate: false,
+            isActive: true
         });
 
         // Return template with creator info
@@ -328,11 +328,11 @@ router.put('/:id', auth, roleAuth('referee'), async (req, res) => {
             return res.status(404).json({ error: 'Template not found' });
         }
 
-        if (template.created_by !== req.user.id) {
+        if (template.createdBy !== req.user.id) {
             return res.status(403).json({ error: 'You can only edit your own templates' });
         }
 
-        if (template.is_system_template) {
+        if (template.isSystemTemplate) {
             return res.status(403).json({ error: 'System templates cannot be edited' });
         }
 
@@ -398,16 +398,16 @@ router.delete('/:id', auth, roleAuth('referee'), async (req, res) => {
             return res.status(404).json({ error: 'Template not found' });
         }
 
-        if (template.created_by !== req.user.id) {
+        if (template.createdBy !== req.user.id) {
             return res.status(403).json({ error: 'You can only delete your own templates' });
         }
 
-        if (template.is_system_template) {
+        if (template.isSystemTemplate) {
             return res.status(403).json({ error: 'System templates cannot be deleted' });
         }
 
         // Soft delete
-        await template.update({ is_active: false });
+        await template.update({ isActive: false });
 
         res.json({ message: 'Template deleted successfully' });
     } catch (error) {

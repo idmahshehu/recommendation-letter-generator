@@ -110,13 +110,32 @@ export default function TemplatesPage() {
         }
     }
 
+    async function handleDelete(templateId: string) {
+        if (!window.confirm("Are you sure you want to delete this template? This cannot be undone.")) return;
+
+        try {
+            await api.delete(`/templates/${templateId}`, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+
+            // remove from the UI
+            setTemplates(prev => prev.filter(t => t.id !== templateId));
+
+            alert("Template deleted successfully");
+        } catch (err: any) {
+            console.error("Delete error:", err);
+            alert(err?.response?.data?.error || "Failed to delete template");
+        }
+    }
+
+
     if (loading) return <div className="p-6 text-gray-600">Loading…</div>;
 
     function friendlyPreview(text: string) {
         return text.replace(/\{([a-zA-Z0-9_]+)\}/g, (_, key) => {
             const label = key
-                .replace(/([A-Z])/g, ' $1')   
-                .replace(/_/g, ' ')          
+                .replace(/([A-Z])/g, ' $1')
+                .replace(/_/g, ' ')
                 .trim();
             return `[${label.charAt(0).toUpperCase() + label.slice(1)}]`;
         });
@@ -144,11 +163,18 @@ export default function TemplatesPage() {
                         <h1 className="text-3xl font-bold text-gray-900 mb-2">Template</h1>
                     </div>
 
-                    <button
+                    {/* <button
                         onClick={() => navigate('/templates/new')}
                         className="px-4 py-2 rounded-xl font-medium bg-blue-600 text-white"
                     >
                         New Template
+                    </button> */}
+
+                    <button
+                        onClick={() => navigate('/templates/generate-template')}
+                        className="px-4 py-2 rounded-xl font-medium bg-blue-600 text-white"
+                    >
+                        Generate Personalized Template
                     </button>
                 </div>
 
@@ -259,9 +285,13 @@ export default function TemplatesPage() {
                                                     <button className="px-3 py-2 rounded-lg border text-sm text-blue-600 hover:text-blue-700">
                                                         Edit
                                                     </button>
-                                                    <button className="px-3 py-2 rounded-lg border text-sm text-red-600 hover:text-red-700">
+                                                    <button
+                                                        onClick={() => handleDelete(t.id)}
+                                                        className="px-3 py-2 rounded-lg border text-sm text-red-600 hover:text-red-700"
+                                                    >
                                                         Delete
                                                     </button>
+
                                                 </>
                                             )}
                                         </div>
