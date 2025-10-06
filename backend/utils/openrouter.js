@@ -80,7 +80,7 @@ const generateWithOpenRouter = async (prompt, options = {}) => {
       content: generatedContent,
       usage: response.data.usage,
       model: response.data.model,
-      selectedModel: selectedModel // Keep track of user's selection
+      selectedModel: selectedModel // user's selection
     };
 
   } catch (error) {

@@ -1,6 +1,6 @@
 const express = require('express');
 const { User } = require('../models');
-const { auth } = require('../middleware/auth');
+const { auth, authorize: roleAuth } = require('../middleware/auth');
 const router = express.Router();
 const multer = require('multer');
 const path = require('path');
@@ -9,7 +9,7 @@ const path = require('path');
 // file uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, 'uploads/logos/'); // Make sure this directory exists
+    cb(null, 'uploads/logos/');
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
@@ -27,7 +27,7 @@ const upload = multer({
     const allowedTypes = /jpeg|jpg|png|gif/;
     const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
     const mimetype = allowedTypes.test(file.mimetype);
-    
+
     if (mimetype && extname) {
       return cb(null, true);
     } else {
@@ -35,6 +35,54 @@ const upload = multer({
     }
   }
 });
+
+// POST /api/users/upload-signature
+router.post('/upload-signature', auth, roleAuth('referee'), async (req, res) => {
+  try {
+    const { signature } = req.body;
+
+    if (signature === '') {
+      await User.update({ signature_url: null }, { where: { id: req.user.id } });
+      return res.json({ message: 'Signature removed successfully', signature_url: null });
+    }
+
+    if (!signature) {
+      return res.status(400).json({ error: 'Signature data is required' });
+    }
+
+    await User.update({ signature_url: signature }, { where: { id: req.user.id } });
+
+    res.json({ message: 'Signature saved successfully', signature_url: signature });
+  } catch (error) {
+    console.error('Error saving signature:', error);
+    res.status(500).json({ error: 'Failed to save signature' });
+  }
+});
+
+// Upload signature as image file
+router.post('/upload-signature-file',
+  auth,
+  roleAuth('referee'),
+  upload.single('signature'),
+  async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: 'No file uploaded' });
+      }
+
+      const fileUrl = `${req.protocol}://${req.get('host')}/uploads/logos/${req.file.filename}`;
+
+      await User.update({ signature_url: fileUrl }, { where: { id: req.user.id } });
+
+      res.json({
+        message: 'Signature file uploaded successfully',
+        signature_url: fileUrl
+      });
+    } catch (error) {
+      console.error('Error uploading signature file:', error);
+      res.status(500).json({ error: 'Failed to upload signature file' });
+    }
+  });
 
 /**
  * @swagger
@@ -92,9 +140,9 @@ router.post('/register', async (req, res) => {
     });
   } catch (error) {
     if (error.name === 'SequelizeValidationError') {
-      res.status(400).json({ 
-        error: 'Validation error', 
-        details: error.errors.map(e => e.message) 
+      res.status(400).json({
+        error: 'Validation error',
+        details: error.errors.map(e => e.message)
       });
     } else {
       res.status(500).json({ error: error.message });
@@ -234,8 +282,8 @@ router.get('/profile', auth, async (req, res) => {
     const user = await User.findByPk(req.user.id, {
       attributes: [
         'id', 'firstName', 'lastName', 'email', 'role',
-        'fullname', 'institution', 'department', 'title', 
-        'city', 'state', 'university_logo_url'
+        'fullname', 'institution', 'department', 'title',
+        'city', 'state', 'university_logo_url', 'signature_url'
       ]
     });
 
@@ -276,8 +324,8 @@ router.put('/profile', auth, async (req, res) => {
     const updatedUser = await User.findByPk(req.user.id, {
       attributes: [
         'id', 'firstName', 'lastName', 'email', 'role',
-        'fullname', 'institution', 'department', 'title', 
-        'city', 'state', 'university_logo_url'
+        'fullname', 'institution', 'department', 'title',
+        'city', 'state', 'university_logo_url', 'signature_url'
       ]
     });
 

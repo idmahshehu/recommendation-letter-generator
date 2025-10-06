@@ -215,6 +215,10 @@ export const LettersPage: React.FC = () => {
       return (
         <span className="text-red-600 text-sm font-medium">Declined</span>
       );
+    } else if (letter.status === 'canceled') {
+      return (
+        <span className="text-orange-600 text-sm font-medium">Canceled</span>
+      );
     }
     return null;
   };
@@ -226,6 +230,7 @@ export const LettersPage: React.FC = () => {
       case 'draft': return 'bg-blue-100 text-blue-800';
       case 'in_progress': return 'bg-blue-50 text-blue-700';
       case 'rejected': return 'bg-red-100 text-red-800';
+      case 'canceled': return 'bg-red-100 text-orange-600';
       default: return 'bg-gray-100 text-gray-800';
     }
   };
@@ -238,6 +243,7 @@ export const LettersPage: React.FC = () => {
       case 'in_review': return 'Under Review';
       case 'completed': return 'Completed';
       case 'rejected': return 'Declined';
+      case 'canceled': return 'Canceled';
       default: return status;
     }
   };
@@ -501,6 +507,7 @@ export const LettersPage: React.FC = () => {
               </table>
             </div>
           )}
+        </div>
           <div className="flex justify-between items-center mt-4">
             <button
               onClick={() => setPage((p) => Math.max(p - 1, 1))}
@@ -522,7 +529,6 @@ export const LettersPage: React.FC = () => {
               Next
             </button>
           </div>
-        </div>
       </div>
     </div>
   );

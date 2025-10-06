@@ -114,11 +114,19 @@ module.exports = (sequelize, DataTypes) => {
         status: {
             type: DataTypes.STRING(20),
             defaultValue: 'draft'
+        },
+        include_signature: {
+            type: DataTypes.BOOLEAN,
+            defaultValue: false
+        },
+        signature_url: {
+            type: DataTypes.TEXT,
+            allowNull: true
         }
     }, {
         tableName: 'letters',
         timestamps: true,
-        underscored: true 
+        underscored: true
     });
 
     // Define associations

@@ -5,20 +5,19 @@ import { api } from "../../services/api";
 import { Navigation } from "../../components/layout/Navigation";
 
 /** Backend can return extra statuses; we'll normalize them for display. */
-type RawStatus = "requested" | "in_progress" | "completed" | "rejected" | "draft" | "in_review";
-type DisplayStatus = "requested" | "in_progress" | "completed" | "rejected";
+type RawStatus = "requested" | "in_progress" | "completed" | "rejected" | "draft" | "in_review" | "canceled";
+type DisplayStatus = "requested" | "in_progress" | "completed" | "rejected" | "canceled";
 
 interface Letter {
     id: string;
     status: RawStatus;
-    applicant: { name: string; program: string };
+    applicant: { name: string; program: string; goal: string; achievements: string[]; };
     referee?: { name: string; institution?: string, email?: string };
     generation_parameters?: { deadline?: string; tone?: string; length?: string };
     created_at: string;
     completed_at?: string | null;
     content?: string;
     rejection_reason?: string | null;
-    //   referee_email?: string;
 }
 
 /* -------------------- helpers -------------------- */
@@ -77,8 +76,13 @@ export default function ApplicantLetters() {
     const [error, setError] = useState("");
     const [selectedStatus, setSelectedStatus] = useState<"all" | DisplayStatus>("all");
     const [search, setSearch] = useState("");
+    const [page, setPage] = useState(1);
+    const [limit] = useState(10);
+    const [totalPages, setTotalPages] = useState(1);
+    const [totalCount, setTotalCount] = useState(0);
 
-    // Preview modal state (INSIDE component)
+
+    // Preview modal state 
     const [preview, setPreview] = useState<(Letter & { displayStatus: DisplayStatus }) | null>(null);
 
     useEffect(() => {
@@ -87,16 +91,22 @@ export default function ApplicantLetters() {
             try {
                 setLoading(true);
                 setError("");
-                // Use applicant-scoped endpoint if you have it (e.g., /me/letters). Using /letters here per your API.
-                const { data } = await api.get("/letters");
+                const { data } = await api.get("/letters", {
+                    params: { page, limit }
+                });
                 setLetters(data?.letters || []);
+                console.log(data.letters);
+                if (data.pagination) {
+                    setTotalPages(data.pagination.totalPages || 1);
+                    setTotalCount(data.pagination.total || 0);
+                }
             } catch (e: any) {
                 setError(e?.response?.data?.error || "Failed to fetch letters");
             } finally {
                 setLoading(false);
             }
         })();
-    }, [token]);
+    }, [token, page]);
 
     /** Normalize once */
     const normalized = useMemo(() => {
@@ -110,11 +120,12 @@ export default function ApplicantLetters() {
 
     /** Derived counts for tabs */
     const counts: Record<"all" | DisplayStatus, number> = useMemo(() => ({
-        all: normalized.length,
+        all: totalCount,
         requested: normalized.filter(l => l.displayStatus === "requested").length,
         in_progress: normalized.filter(l => l.displayStatus === "in_progress").length,
         completed: normalized.filter(l => l.displayStatus === "completed").length,
         rejected: normalized.filter(l => l.displayStatus === "rejected").length,
+        canceled: normalized.filter(l => l.displayStatus === "canceled").length,
     }), [normalized]);
 
     /** Apply filters/search */
@@ -136,7 +147,7 @@ export default function ApplicantLetters() {
     const withdraw = async (id: string) => {
         if (!window.confirm("Withdraw this request?")) return;
         try {
-            await api.delete(`/letters/${id}`); // adjust if you add an applicant-scoped route
+            await api.delete(`/letters/${id}/withdraw`);
             setLetters(prev => prev.filter(l => l.id !== id));
         } catch (e: any) {
             setError(e?.response?.data?.error || "Failed to withdraw");
@@ -305,7 +316,7 @@ export default function ApplicantLetters() {
                                 </button>
                             </div>
 
-                            <div className="p-4 space-y-3 text-sm">
+                            <div className="p-4 space-y-3 text-md">
                                 <div><span className="font-medium">Program:</span> {preview.applicant.program}</div>
                                 <div><span className="font-medium">Referee:</span> {preview.referee?.name || "—"}</div>
                                 <div><span className="font-medium">Referee Email:</span> {preview.referee?.email || "—"}</div>
@@ -315,11 +326,17 @@ export default function ApplicantLetters() {
                                 <div>
                                     <span className="font-medium">Status:</span>{" "}
                                     {preview.displayStatus === "in_progress" ? "Accepted" :
-                                        preview.displayStatus === "rejected" ? "Declined" : "Completed"}
+                                        preview.displayStatus === "rejected" ? "Declined" :
+                                            preview.displayStatus === "canceled" ? "Canceled" : "Completed"}
                                     {preview.displayStatus === "rejected" && preview.rejection_reason && (
                                         <div className="text-md text-red-600 mt-1">Reason: {preview.rejection_reason}</div>
                                     )}
+                                    {preview.displayStatus === "canceled" && preview.rejection_reason && (
+                                        <div className="text-md text-orange-600 mt-1">Reason: {preview.rejection_reason}</div>
+                                    )}
                                 </div>
+                                <div><span className="font-medium">Goal:</span> {preview.applicant.goal}</div>
+                                <div><span className="font-medium">Achievements:</span> {preview.applicant.achievements}</div>
                                 <div>
                                     <span className="font-medium">Deadline:</span>{" "}
                                     {preview.generation_parameters?.deadline
@@ -334,14 +351,12 @@ export default function ApplicantLetters() {
 
                             <div className="p-4 border-t flex justify-end gap-2">
                                 {preview.displayStatus === "completed" && preview.content && (
-                                    <a
-                                        href={preview.content}
-                                        target="_blank"
-                                        rel="noreferrer"
+                                    <button
+                                        onClick={() => navigate(`/applicant/letters/${preview.id}`)}
                                         className="px-4 py-2 rounded-lg font-medium bg-green-600 text-white text-sm"
                                     >
                                         Open Letter
-                                    </a>
+                                    </button>
                                 )}
                                 <button onClick={() => setPreview(null)} className="px-4 py-2 rounded-lg border text-sm">
                                     Close
@@ -350,6 +365,28 @@ export default function ApplicantLetters() {
                         </div>
                     </div>
                 )}
+
+                <div className="flex justify-between items-center mt-4">
+                    <button
+                        onClick={() => setPage((p) => Math.max(p - 1, 1))}
+                        disabled={page === 1}
+                        className="px-3 py-1 rounded bg-gray-200 text-sm disabled:opacity-50"
+                    >
+                        Previous
+                    </button>
+
+                    <span className="text-sm text-gray-700">
+                        Page {page} of {totalPages}
+                    </span>
+
+                    <button
+                        onClick={() => setPage((p) => Math.min(p + 1, totalPages))}
+                        disabled={page === totalPages}
+                        className="px-3 py-1 rounded bg-gray-200 text-sm disabled:opacity-50"
+                    >
+                        Next
+                    </button>
+                </div>
 
             </div>
         </div>

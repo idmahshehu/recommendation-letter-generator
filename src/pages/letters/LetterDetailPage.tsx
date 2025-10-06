@@ -153,6 +153,77 @@ const LetterDetailPage: React.FC = () => {
         }
     };
 
+    // const downloadPDF = async (preview = false) => {
+    //     try {
+    //         const response = await api.get(
+    //             `/letters/${id}/download/pdf${preview ? '?preview=true' : ''}`,
+    //             { responseType: 'blob' }
+    //         );
+
+    //         const url = window.URL.createObjectURL(new Blob([response.data]));
+    //         if (preview) {
+    //             window.open(url, '_blank');
+    //         } else {
+    //             const link = document.createElement('a');
+    //             link.href = url;
+    //             link.download = `Recommendation_Letter.pdf`;
+    //             link.click();
+    //         }
+    //     } catch (error) {
+    //         console.error('Error downloading PDF:', error);
+    //     }
+    // };
+
+    const downloadPDF = async (preview = false) => {
+    try {
+        const response = await api.get(
+            `/letters/${id}/download/pdf${preview ? '?preview=true' : ''}`,
+            { 
+                responseType: 'blob',
+                headers: {
+                    'Accept': 'application/pdf'
+                }
+            }
+        );
+
+        const blob = new Blob([response.data], { type: 'application/pdf' });
+        const url = window.URL.createObjectURL(blob);
+        
+        if (preview) {
+            window.open(url, '_blank');
+            // Clean up after a delay to ensure the PDF loads
+            setTimeout(() => window.URL.revokeObjectURL(url), 100);
+        } else {
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `Recommendation_Letter_${letter?.applicant_data.firstName}_${letter?.applicant_data.lastName}.pdf`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(url);
+        }
+    } catch (error) {
+        console.error('Error downloading PDF:', error);
+        showAlert('Failed to download PDF', 'error');
+    }
+};
+    const downloadDOCX = async () => {
+        try {
+            const response = await api.get(`/letters/${id}/download/docx`, {
+                responseType: 'blob'
+            });
+
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `Recommendation_Letter.docx`;
+            link.click();
+        } catch (error) {
+            console.error('Error downloading DOCX:', error);
+        }
+    };
+
+
     if (loading) {
         return (
             <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -286,15 +357,35 @@ const LetterDetailPage: React.FC = () => {
                                     </svg>
                                     Regenerate
                                 </button> */}
+                                <button
+                                    onClick={() => downloadPDF(true)}
+                                    className="px-4 py-2 border border-blue-600 text-blue-600 rounded-md hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                >
+                                    <svg className="w-4 h-4 mr-2 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                    </svg>
+                                    Preview PDF
+                                </button>
 
                                 <button
-                                    onClick={handleDownload}
+                                    onClick={() => downloadPDF(false)}
+                                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                >
+                                    <svg className="w-4 h-4 mr-2 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
+                                    Download PDF
+                                </button>
+
+                                <button
+                                    onClick={downloadDOCX}
                                     className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500"
                                 >
                                     <svg className="w-4 h-4 mr-2 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                                     </svg>
-                                    Download
+                                    Download DOCX
                                 </button>
                             </>
                         )}

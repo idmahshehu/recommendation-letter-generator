@@ -2,12 +2,12 @@ const express = require('express');
 const db = require('../models');
 const { auth, authorize: roleAuth } = require('../middleware/auth');
 const router = express.Router();
-const { generateLetterGemini } = require('../utils/gemini');
 const { generateWithOllama } = require('../utils/ollama');
 const { json } = require('sequelize');
 const { Op, Sequelize } = require('sequelize');
 const { generateWithOpenRouter } = require('../utils/openrouter');
 const { getAvailableModels } = require('../utils/openrouter');
+const { generatePDF, generateDOCX } = require('../utils/documentGenerator');
 
 const Letter = db.Letter;
 const User = db.User;
@@ -161,6 +161,95 @@ function formatDate(date) {
 // ------------------------------------------------
 // APPLICANT FLOW - Step 1: Request Letter
 // ------------------------------------------------
+// Add this route to your letters router (or create a separate referees router)
+
+/**
+ * @swagger
+ * /api/referees/validate:
+ *   post:
+ *     summary: Validate if a referee exists and check for duplicate requests
+ *     tags: [Referees]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 example: "referee@york.citycollege.eu"
+ *     responses:
+ *       200:
+ *         description: Referee validation result
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 exists:
+ *                   type: boolean
+ *                 name:
+ *                   type: string
+ *                 hasPendingRequest:
+ *                   type: boolean
+ *       400:
+ *         description: Invalid email format
+ */
+router.post('/referees/validate', auth, roleAuth('applicant'), async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!email || !emailRegex.test(email)) {
+      return res.status(400).json({
+        exists: false,
+        error: 'Invalid email format'
+      });
+    }
+
+    // Check if referee exists
+    const referee = await User.findOne({
+      where: {
+        email: email.toLowerCase().trim(),
+        role: 'referee',
+      }
+    });
+
+    if (!referee) {
+      return res.json({
+        exists: false,
+        message: 'Referee not found in system'
+      });
+    }
+
+    // Check if there's already a pending request
+    const existingRequest = await Letter.findOne({
+      where: {
+        referee_id: referee.id,
+        'applicant_data.requester_id': req.user.id,
+        status: 'requested'
+      }
+    });
+
+    res.json({
+      exists: true,
+      name: `${referee.firstName} ${referee.lastName}`,
+      hasPendingRequest: !!existingRequest,
+      message: existingRequest 
+        ? 'You already have a pending request with this referee'
+        : `Referee found: ${referee.firstName} ${referee.lastName}`
+    });
+
+  } catch (error) {
+    console.error('Error validating referee:', error);
+    res.status(500).json({
+      exists: false,
+      error: 'Failed to validate referee'
+    });
+  }
+});
 
 /**
  * @swagger
@@ -174,13 +263,24 @@ function formatDate(date) {
  *         application/json:
  *           schema:
  *             type: object
+ *             required:
+ *               - referee_email
+ *               - applicant_data
  *             properties:
- *               referee_id:
+ *               referee_email:
  *                 type: string
- *                 format: uuid
- *                 example: "266d8b9d-e939-440b-85b9-be40f0315b13"
+ *                 format: email
+ *                 example: "dr.johnson@york.citycollege.eu"
+ *                 description: "Email address of the referee (must exist in system)"
  *               applicant_data:
  *                 type: object
+ *                 required:
+ *                   - firstName
+ *                   - lastName
+ *                   - email
+ *                   - program
+ *                   - goal
+ *                   - achievements
  *                 properties:
  *                   firstName:
  *                     type: string
@@ -190,6 +290,7 @@ function formatDate(date) {
  *                     example: "Doe"
  *                   email:
  *                     type: string
+ *                     format: email
  *                     example: "jane.doe@example.com"
  *                   program:
  *                     type: string
@@ -202,28 +303,80 @@ function formatDate(date) {
  *                     items:
  *                       type: string
  *                     example: ["Top 10% of class", "Led research project on AI"]
+ *                     minItems: 1
  *               preferences:
  *                 type: object
  *                 properties:
- *                   tone:
- *                     type: string
- *                     enum: ["formal", "casual", "academic"]
- *                     example: "formal"
- *                   length:
- *                     type: string
- *                     enum: ["short", "standard", "detailed"]
- *                     example: "standard"
  *                   deadline:
  *                     type: string
  *                     format: date
- *                     example: "2024-03-15"
+ *                     example: "2025-03-15"
+ *                     description: "Must be a future date"
  *     responses:
  *       201:
  *         description: Letter request created successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Letter request sent successfully"
+ *                 letter:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                       format: uuid
+ *                     status:
+ *                       type: string
+ *                       example: "requested"
+ *                     referee:
+ *                       type: object
+ *                       properties:
+ *                         name:
+ *                           type: string
+ *                           example: "Dr. Sarah Johnson"
+ *                         email:
+ *                           type: string
+ *                           example: "dr.johnson@york.citycollege.eu"
+ *                     requested_at:
+ *                       type: string
+ *                       format: date-time
  *       400:
- *         description: Bad request
+ *         description: Bad request - validation error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: "Referee email and applicant data are required"
  *       404:
  *         description: Referee not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: "Referee not found"
+ *       409:
+ *         description: Duplicate request - pending request already exists
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: "You already have a pending letter request with this referee"
+ *                 existing_request_id:
+ *                   type: string
+ *                   format: uuid
  */
 router.post('/request', auth, roleAuth('applicant'), async (req, res) => {
   try {
@@ -244,6 +397,14 @@ router.post('/request', auth, roleAuth('applicant'), async (req, res) => {
       });
     }
 
+    // Validate applicant_data fields
+    const { firstName, lastName, email, program, goal, achievements } = applicant_data;
+    if (!firstName || !lastName || !email || !program || !goal || !achievements?.length) {
+      return res.status(400).json({
+        error: 'All applicant information fields are required'
+      });
+    }
+
     // Validate referee exists
     const referee = await User.findOne({
       where: {
@@ -253,10 +414,12 @@ router.post('/request', auth, roleAuth('applicant'), async (req, res) => {
     });
 
     if (!referee) {
-      return res.status(404).json({ error: 'Referee not found' });
+      return res.status(404).json({ 
+        error: 'Referee not found' 
+      });
     }
 
-    // Check if there's already a pending request from this applicant to this referee
+    // Check for duplicate pending request
     const existingRequest = await Letter.findOne({
       where: {
         referee_id: referee.id,
@@ -272,16 +435,15 @@ router.post('/request', auth, roleAuth('applicant'), async (req, res) => {
       });
     }
 
-
     // Create letter request
     const letter = await Letter.create({
       referee_id: referee.id,
       applicant_data: {
         ...applicant_data,
-        requester_id: req.user.id // requesting user id
+        requester_id: req.user.id
       },
       generation_parameters: preferences,
-      status: 'requested' // Key: starts as 'requested'
+      status: 'requested'
     });
 
     res.status(201).json({
@@ -296,9 +458,12 @@ router.post('/request', auth, roleAuth('applicant'), async (req, res) => {
         requested_at: letter.requested_at
       }
     });
+
   } catch (err) {
     console.error('Error creating letter request:', err);
-    res.status(400).json({ error: err.message });
+    res.status(500).json({ 
+      error: 'An error occurred while processing your request' 
+    });
   }
 });
 
@@ -507,9 +672,6 @@ router.post('/:id/reject', auth, roleAuth('referee'), async (req, res) => {
       rejection_reason: reason || null,
       rejected_at: new Date()
     });
-
-    // notify the applicant
-    // await notifyApplicant(letter, 'rejected');
 
     res.json({
       message: 'Letter request rejected',
@@ -1007,6 +1169,8 @@ router.put('/:id/edit', auth, roleAuth('referee'), async (req, res) => {
 
 router.post('/:id/approve', auth, roleAuth('referee'), async (req, res) => {
   try {
+    const { include_signature } = req.body;
+
     const letter = await Letter.findOne({
       where: {
         id: req.params.id,
@@ -1019,17 +1183,20 @@ router.post('/:id/approve', auth, roleAuth('referee'), async (req, res) => {
       return res.status(404).json({ error: 'Letter not found or cannot be approved' });
     }
 
-    await letter.update({
-      status: 'completed'
-    });
+    // const referee = await User.findByPk(req.user.id);
 
-    // await notifyApplicant(letter);
+    await letter.update({
+      status: 'completed',
+      include_signature: include_signature || false,
+      completed_at: new Date()
+    });
 
     res.json({
       message: 'Letter approved and marked as completed.',
       letter: {
         id: letter.id,
         status: letter.status,
+        include_signature: letter.include_signature,
         completed_at: letter.updated_at
       }
     });
@@ -1187,7 +1354,9 @@ router.get('/', auth, async (req, res) => {
         status: letter.status,
         applicant: {
           name: `${letter.applicant_data.firstName} ${letter.applicant_data.lastName}`,
-          program: letter.applicant_data.program
+          program: letter.applicant_data.program,
+          goal: letter.applicant_data.goal,
+          achievements: letter.applicant_data.achievements?.join(', ')
         },
         referee: letter.referee ? {
           name: `${letter.referee.firstName} ${letter.referee.lastName}`,
@@ -1201,7 +1370,8 @@ router.get('/', auth, async (req, res) => {
         // content: (req.user.role === 'referee' || letter.status === 'completed') ?
         content: letter.status === 'completed' ?
           letter.letter_content : null,
-        rejection_reason: letter.status === 'rejected' ? letter.rejection_reason : null
+        rejection_reason: (letter.status === 'rejected' || letter.status === 'canceled') ? letter.rejection_reason : null ,
+        rejected_at: (letter.status === 'rejected' || letter.status === 'canceled') ? letter.rejected_at : null
       })),
       pagination: {
         total: letters.count,
@@ -1773,7 +1943,75 @@ router.post('/:id/restore/:version', auth, roleAuth('referee'), async (req, res)
 // LEGACY/ADMIN ROUTES 
 // ------------------------------------------------
 
-// DELETE
+// ------------------------------------------------
+// Cancel Letter (Referee only)
+// ------------------------------------------------
+/**
+ * @swagger
+ * /api/letters/{id}/cancel:
+ *   post:
+ *     summary: Cancel a letter (referee only - drafts/in_review only)
+ *     tags: [Letters]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Letter ID
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               reason:
+ *                 type: string
+ *                 description: Optional reason for cancelation (visible to applicant)
+ *     responses:
+ *       200:
+ *         description: Letter canceled successfully
+ *       404:
+ *         description: Letter not found or cannot be canceled
+ */
+router.post('/:id/cancel', auth, roleAuth('referee'), async (req, res) => {
+  try {
+    const { reason } = req.body;
+
+    const letter = await Letter.findOne({
+      where: {
+        id: req.params.id,
+        referee_id: req.user.id,
+        status: {
+          [Op.in]: ['draft', 'in_review', 'rejected']
+        }
+      }
+    });
+
+    if (!letter) {
+      return res.status(404).json({ error: 'Letter request not found or already processed' });
+    }
+
+    await letter.update({
+      status: 'canceled',
+      rejection_reason: reason || null,
+      rejected_at: new Date()
+    });
+
+    res.json({
+      message: 'Letter canceled',
+      letter: {
+        id: letter.id,
+        status: letter.status
+      }
+    });
+  } catch (err) {
+    console.error('Error canceling letter:', err);
+    res.status(500).json({ error: 'Failed to cancel letter' });
+  }
+});
+
 /**
  * @swagger
  * /api/letters/{id}:
@@ -1830,7 +2068,7 @@ router.delete('/:id', auth, roleAuth('referee'), async (req, res) => {
         id: req.params.id,
         referee_id: req.user.id,
         status: {
-          [Op.in]: ['draft', 'in_review', 'rejected']
+          [Op.in]: ['requested', 'draft', 'in_review', 'rejected']
         }
       }
     });
@@ -1853,6 +2091,82 @@ router.delete('/:id', auth, roleAuth('referee'), async (req, res) => {
   } catch (err) {
     console.error('Error deleting letter:', err);
     res.status(500).json({ error: 'Failed to delete letter' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/letters/{id}:
+ *   delete:
+ *     summary: Withdraw a letter request (applicant only - requested)
+ *     description: 
+ *       Withdraw a letter request
+ *     tags: [Letters]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: The ID of the letter to withdraw
+ *     responses:
+ *       200:
+ *         description: Letter withdraw successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Letter withdraw successfully"
+ *                 id:
+ *                   type: string
+ *                   format: uuid
+ *       404:
+ *         description: Letter not found or cannot be withdraw
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: "Letter not found or cannot be withdraw."
+ *       403:
+ *         description: Forbidden 
+ *       500:
+ *         description: Internal server error
+ */
+
+router.delete('/:id/withdraw', auth, roleAuth('applicant'), async (req, res) => {
+  try {
+
+    const letter = await Letter.findOne({
+      where: {
+        id: req.params.id,                
+        status: { [Op.in]: ['requested'] }
+      }
+    });
+
+    if (!letter) {
+      return res.status(404).json({ 
+        error: 'Letter not found or cannot be withdraw.' 
+      });
+    }
+
+    await letter.destroy();
+
+    res.json({ 
+      message: 'Letter withdraw successfully',
+      id: letter.id,
+    });
+  } catch (err) {
+    console.error('Error withdrawing letter:', err);
+    res.status(500).json({ error: 'Failed to withdraw letter' });
   }
 });
 
@@ -1967,6 +2281,211 @@ router.delete('/:id/history', auth, roleAuth('referee'), async (req, res) => {
   } catch (err) {
     console.error('Error clearing history:', err);
     res.status(500).json({ error: 'Failed to clear history' });
+  }
+});
+
+// DOWNLOAD 
+
+/**
+ * @swagger
+ * /api/letters/{id}/download/pdf:
+ *   get:
+ *     summary: Download letter as PDF (completed letters only)
+ *     tags: [Letters]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *       - in: query
+ *         name: preview
+ *         schema:
+ *           type: boolean
+ *         description: If true, opens in browser instead of downloading
+ *     responses:
+ *       200:
+ *         description: PDF file
+ *         content:
+ *           application/pdf:
+ *             schema:
+ *               type: string
+ *               format: binary
+ *       403:
+ *         description: Not authorized or letter not completed
+ *       404:
+ *         description: Letter not found
+ */
+// router.get('/:id/download/pdf', auth, async (req, res) => {
+//   try {
+//     const { preview } = req.query;
+    
+//     const letter = await Letter.findByPk(req.params.id, {
+//       include: [{
+//         model: User,
+//         as: 'referee',
+//         attributes: ['id', 'firstName', 'lastName', 'email', 'institution', 
+//                      'department', 'title', 'fullname', 'city', 'state', 
+//                      'university_logo_url', 'signature_url']
+//       }]
+//     });
+
+//     if (!letter) {
+//       return res.status(404).json({ error: 'Letter not found' });
+//     }
+
+//     // Check authorization
+//     const isReferee = req.user.role === 'referee' && letter.referee_id === req.user.id;
+//     const isApplicant = req.user.role === 'applicant' && 
+//                         letter.applicant_data.requester_id === req.user.id;
+
+//     if (!isReferee && !isApplicant) {
+//       return res.status(403).json({ error: 'Not authorized' });
+//     }
+
+//     // Only completed letters can be downloaded
+//     if (letter.status !== 'completed') {
+//       return res.status(403).json({ 
+//         error: 'Letter must be completed before downloading',
+//         current_status: letter.status 
+//       });
+//     }
+
+//     const pdfBuffer = await generatePDF(letter, letter.referee);
+    
+//     const applicantName = `${letter.applicant_data.firstName}_${letter.applicant_data.lastName}`;
+//     const filename = `Recommendation_Letter_${applicantName}.pdf`;
+
+//     res.setHeader('Content-Type', 'application/pdf');
+//     res.setHeader('Content-Disposition', 
+//       preview === 'true' ? `inline; filename="${filename}"` : `attachment; filename="${filename}"`
+//     );
+//     res.send(pdfBuffer);
+
+//   } catch (error) {
+//     console.error('Error generating PDF:', error);
+//     res.status(500).json({ error: 'Failed to generate PDF' });
+//   }
+// });
+
+router.get('/:id/download/pdf', auth, async (req, res) => {
+  try {
+    const { preview } = req.query;
+    
+    const letter = await Letter.findByPk(req.params.id, {
+      include: [{
+        model: User,
+        as: 'referee',
+        attributes: ['id', 'firstName', 'lastName', 'email', 'institution', 
+                     'department', 'title', 'fullname', 'city', 'state', 
+                     'university_logo_url', 'signature_url']
+      }]
+    });
+
+    if (!letter) {
+      return res.status(404).json({ error: 'Letter not found' });
+    }
+
+    const isReferee = req.user.role === 'referee' && letter.referee_id === req.user.id;
+    const isApplicant = req.user.role === 'applicant' && 
+                        letter.applicant_data.requester_id === req.user.id;
+
+    if (!isReferee && !isApplicant) {
+      return res.status(403).json({ error: 'Not authorized' });
+    }
+
+    if (letter.status !== 'completed') {
+      return res.status(403).json({ 
+        error: 'Letter must be completed before downloading',
+        current_status: letter.status 
+      });
+    }
+
+    const pdfBuffer = await generatePDF(letter, letter.referee);
+    
+    const applicantName = `${letter.applicant_data.firstName}_${letter.applicant_data.lastName}`;
+    const filename = `Recommendation_Letter_${applicantName}.pdf`;
+
+    // Set headers BEFORE sending
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Length', pdfBuffer.length); // Add this
+    res.setHeader('Content-Disposition', 
+      preview === 'true' ? `inline; filename="${filename}"` : `attachment; filename="${filename}"`
+    );
+    
+    // Send buffer directly
+    res.end(pdfBuffer, 'binary');
+
+  } catch (error) {
+    console.error('Error generating PDF:', error);
+    res.status(500).json({ error: 'Failed to generate PDF' });
+  }
+});
+/**
+ * @swagger
+ * /api/letters/{id}/download/docx:
+ *   get:
+ *     summary: Download letter as DOCX (completed letters only)
+ *     tags: [Letters]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: DOCX file
+ *         content:
+ *           application/vnd.openxmlformats-officedocument.wordprocessingml.document:
+ *             schema:
+ *               type: string
+ *               format: binary
+ */
+router.get('/:id/download/docx', auth, async (req, res) => {
+  try {
+    const letter = await Letter.findByPk(req.params.id, {
+      include: [{
+        model: User,
+        as: 'referee',
+        attributes: ['id', 'firstName', 'lastName', 'email', 'institution', 
+                     'department', 'title', 'fullname', 'city', 'state', 'university_logo_url', 'signature_url']
+      }]
+    });
+
+    if (!letter) {
+      return res.status(404).json({ error: 'Letter not found' });
+    }
+
+    const isReferee = req.user.role === 'referee' && letter.referee_id === req.user.id;
+    const isApplicant = req.user.role === 'applicant' && 
+                        letter.applicant_data.requester_id === req.user.id;
+
+    if (!isReferee && !isApplicant) {
+      return res.status(403).json({ error: 'Not authorized' });
+    }
+
+    if (letter.status !== 'completed') {
+      return res.status(403).json({ 
+        error: 'Letter must be completed before downloading',
+        current_status: letter.status 
+      });
+    }
+
+    const docxBuffer = await generateDOCX(letter, letter.referee);
+    
+    const applicantName = `${letter.applicant_data.firstName}_${letter.applicant_data.lastName}`;
+    const filename = `Recommendation_Letter_${applicantName}.docx`;
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(docxBuffer);
+
+  } catch (error) {
+    console.error('Error generating DOCX:', error);
+    res.status(500).json({ error: 'Failed to generate DOCX' });
   }
 });
 

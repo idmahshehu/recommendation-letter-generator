@@ -11,8 +11,8 @@ const path = require('path');
 const app = express();
 
 app.use(cors({
-  origin: 'http://localhost:3000', // Your frontend URL
-  credentials: true // If you're using cookies/sessions
+  origin: 'http://localhost:3000', // frontend URL
+  credentials: true 
 }));
 
 // Middleware
@@ -22,7 +22,8 @@ app.use(express.urlencoded({ extended: true }));
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', authRoutes);
-app.use('/uploads/logos', express.static(path.join(__dirname, 'uploads/logos')));
+// app.use('/uploads/logos', express.static(path.join(__dirname, 'uploads/logos')));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Test route
 app.get('/', (req, res) => {

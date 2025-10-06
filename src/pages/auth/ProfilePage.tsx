@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { Navigation } from '../../components/layout/Navigation';
+import SignatureSection from '../SignatureSection';
 
 interface ProfileData {
   firstName: string;
@@ -15,6 +16,7 @@ interface ProfileData {
   city?: string;
   state?: string;
   university_logo_url?: string;
+  signature_url?: string | null;
 }
 
 interface Alert {
@@ -44,7 +46,7 @@ const ProfilePage: React.FC = () => {
   const [alert, setAlert] = useState<Alert | null>(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
-
+  const { token } = useAuth();
 
   useEffect(() => {
     fetchProfile();
@@ -57,7 +59,8 @@ const ProfilePage: React.FC = () => {
       const userData = response.data;
       setProfile({
         ...userData,
-        fullname: `${userData.firstName} ${userData.lastName}`
+        fullname: `${userData.firstName} ${userData.lastName}`,
+        signature_url: userData.signature_url || null
       });
     } catch (error) {
       console.error('Failed to fetch profile:', error);
@@ -312,6 +315,29 @@ const ProfilePage: React.FC = () => {
                 </div>
               </div>
 
+              <SignatureSection
+                currentSignature={profile.signature_url || null}
+                onSave={async (signatureData) => {
+                  try {
+                    const response = await api.post('/users/upload-signature',
+                      { signature: signatureData }
+                    );
+
+                    setProfile({
+                      ...profile,
+                      signature_url: response.data.signature_url || null
+                    });
+
+                    showAlert(
+                      signatureData ? 'Signature saved successfully' : 'Signature removed successfully',
+                      'success'
+                    );
+                  } catch (error) {
+                    console.error('Failed to save signature:', error);
+                    showAlert('Failed to save signature', 'error');
+                  }
+                }}
+              />
               {/* Form Actions */}
               <div className="bg-gray-50 px-6 py-4 border-t border-gray-200">
                 <div className="flex justify-end space-x-3">
