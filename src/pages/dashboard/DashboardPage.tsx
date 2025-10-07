@@ -152,7 +152,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
   const handleQuickAction = (action: string, letterId?: string) => {
     switch (action) {
       case 'view_all_letters':
-        onNavigate?.('letters');
+        navigate(`/letters`);
         break;
       case 'new_letter':
         if (letterId) {
@@ -339,6 +339,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
                                 handleQuickAction('edit_letter', letter.id);
                               } else if (letter.status === 'in_progress') {
                                 handleQuickAction('new_letter', letter.id);
+                              } else if (letter.status === 'rejected') {
+                                handleQuickAction('view_all_letters')
                               } else {
                                 handleQuickAction('view_letter', letter.id);
                               }

@@ -69,7 +69,7 @@ function AppRoutes() {
       />
 
       <Route
-        path="/referee/letters/:id"
+        path="/letters/:id"
         element={
           <ProtectedRoute allowedRoles={['referee']}>
             <LetterDetailPage />
