@@ -175,16 +175,13 @@ const removeSignature = async () => {
   setSaving(true);
   try {
     // Use full backend URL
-    const res = await fetch('http://localhost:5000/api/users/upload-signature', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ signature: '' }),
-    });
-    const data = await res.json();
-    await onSave(data.signature_url);
+    const res = await api.post('/users/upload-signature', { signature: '' });
+    const data = res.data;
+
+    if (onSave) {
+      await onSave(data.signature_url || null);
+    }
+    
     clearSignature();
   } catch (error) {
     console.error('Failed to remove signature:', error);

@@ -10,6 +10,7 @@ import {
     MenuItem
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
+import { api } from '../../services/api';
 
 interface RegisterFormProps {
     onRegister?: (firstName: string, lastName: string, email: string, password: string, role: string) => Promise<void>;
@@ -29,8 +30,8 @@ const RegisterForm: React.FC<RegisterFormProps> = ({ onRegister }) => {
     useEffect(() => {
         const fetchRoles = async () => {
             try {
-                const response = await fetch('http://localhost:5000/api/auth/roles');
-                const roles = await response.json();
+                const response = await api.get('/auth/roles');
+                const roles = await response.data;
                 setavailableRoles(roles.map((r: string) => r.toLowerCase()));
             } catch (error) {
                 console.error('Failed to fetch roles:', error);
