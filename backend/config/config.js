@@ -1,4 +1,6 @@
 require('dotenv').config();
+const fs = require('fs');
+
 
 module.exports = {
   development: {
@@ -25,6 +27,7 @@ module.exports = {
         require: true,
         rejectUnauthorized: false
       }
-    }
+    },
+    logging: false
   }
 };

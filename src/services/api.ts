@@ -1,13 +1,13 @@
 import axios from "axios";
 
 export const API_BASE_URL =
-  process.env.REACT_APP_API_BASE_URL || "http://localhost:5000/api";
+  window.location.hostname === "localhost"
+    ? "http://localhost:5000/api"
+    : "https://recommendation-letter-generator-6r8g.onrender.com/api";
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
-  headers: {
-    "Content-Type": "application/json",
-  },
+  headers: { "Content-Type": "application/json" },
 });
 
 // Attach token automatically before each request

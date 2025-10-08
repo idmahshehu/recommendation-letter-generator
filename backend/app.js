@@ -11,8 +11,12 @@ const path = require('path');
 const app = express();
 
 app.use(cors({
-  origin: 'http://localhost:3000', 
-  credentials: true 
+  origin: [
+    'http://localhost:3000',
+    'https://recommendation.tarantula-ks.com',
+    'https://recommendation-letter-generator-6r8g.onrender.com'
+  ],
+  credentials: true
 }));
 
 // Middleware

@@ -1,3 +1,8 @@
+require('dotenv').config();
+
+console.log('NODE_ENV:', process.env.NODE_ENV);
+console.log('DATABASE_URL:', process.env.DATABASE_URL ? '✅ Loaded' : '❌ Missing');
+
 const app = require('./app');
 const express = require('express');
 const cors = require('cors');
@@ -16,7 +21,7 @@ async function startServer() {
     app.use(cors({
       origin: FRONTENDURL, // frontend URL
       credentials: true
-    }));
+    })); 
 
     // Start server
     app.listen(PORT, () => {
