@@ -4,6 +4,7 @@ const cors = require('cors');
 const { sequelize } = require('./models');
 
 const PORT = process.env.PORT || 5000;
+const FRONTENDURL = process.env.FRONTENDURL;
 
 // CORS middleware
 async function startServer() {
@@ -13,7 +14,7 @@ async function startServer() {
     console.log('Database connection established successfully.');
 
     app.use(cors({
-      origin: 'http://localhost:3000', // frontend URL
+      origin: FRONTENDURL, // frontend URL
       credentials: true
     }));
 
@@ -21,6 +22,7 @@ async function startServer() {
     app.listen(PORT, () => {
       console.log(`Server running on http://localhost:${PORT}`);
     });
+
 
   } catch (error) {
     console.error('Unable to connect to database:', error);
