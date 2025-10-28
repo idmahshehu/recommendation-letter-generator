@@ -188,7 +188,7 @@ const RegenerationModal: React.FC<RegenerationModalProps> = ({
                       >
                         {availableModels.map((model) => (
                           <option key={model.id} value={model.id}>
-                            {model.name} - {model.pricing}
+                            {model.name} - {model.description}
                           </option>
                         ))}
                       </select>

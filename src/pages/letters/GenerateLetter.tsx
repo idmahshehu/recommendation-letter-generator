@@ -408,7 +408,8 @@ const GenerateLetter = () => {
                                     >
                                         {availableModels.map((model) => (
                                             <option key={model.id} value={model.id}>
-                                                {model.name} - {model.description} ({model.pricing})
+                                                {model.name} - {model.description} 
+                                                {/* ({model.pricing}) */}
                                             </option>
                                         ))}
                                     </select>

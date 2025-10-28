@@ -37,7 +37,7 @@ const analyzeLetterStructure = async (letterText) => {
     // Simple fallback
     return {
       introduction_pattern: "Direct formal introduction",
-      conclusion_style: "Strong endorsement with offer of support", 
+      conclusion_style: "Positive ending that offers support", 
       tone: "professional",
       key_phrases: ["excellent performance", "highly recommend"]
     };

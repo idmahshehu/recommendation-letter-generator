@@ -255,7 +255,7 @@ async function generatePDF(letter, referee) {
         doc.text(paragraphs[i].trim(), margin, y, {
           align: 'justify',
           width: 450,
-          lineGap: 3
+          lineGap: 2
         });
         y = doc.y + 20;
       }

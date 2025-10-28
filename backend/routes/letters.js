@@ -400,9 +400,7 @@ router.post('/request', auth, roleAuth('applicant'), async (req, res) => {
     // Validate applicant_data fields
     const { firstName, lastName, email, program, goal, achievements } = applicant_data;
     if (!firstName || !lastName || !email || !program || !goal || !achievements?.length) {
-      return res.status(400).json({
-        error: 'All applicant information fields are required'
-      });
+      return res.status(400).json({ error: 'All applicant information fields are required'});
     }
 
     // Validate referee exists
@@ -1563,8 +1561,9 @@ router.get('/:id', auth, async (req, res) => {
  */
 router.post('/:id/regenerate', auth, roleAuth('referee'), async (req, res) => {
   try {
-    const { type, selected_model, extra_context } = req.body;
-
+    const { type, selected_model, extra_context = {} } = req.body;
+ 
+    // 1️⃣ Find the letter
     const letter = await Letter.findOne({
       where: {
         id: req.params.id,
@@ -1572,42 +1571,57 @@ router.post('/:id/regenerate', auth, roleAuth('referee'), async (req, res) => {
         status: ['draft', 'in_review']
       }
     });
-
+ 
     if (!letter) {
       return res.status(404).json({ error: 'Letter not found or cannot be regenerated' });
     }
-
-    let history = Array.isArray(letter.letter_history) ? [...letter.letter_history] : [];
-
-    // Template + referee info
+ 
+    // 2️⃣ Prepare template + referee info
     const template = await Template.findByPk(letter.template_id);
     if (!template) return res.status(404).json({ error: 'Template not found' });
-
+ 
     const referee = await User.findByPk(req.user.id, {
-      attributes: ['firstName', 'lastName', 'email', 'institution', 'department', 'title', 'fullname', 'city', 'state']
+      attributes: [
+        'firstName', 'lastName', 'email', 'institution',
+        'department', 'title', 'fullname', 'city', 'state'
+      ]
     });
-
-    // Determine regeneration settings
+ 
+    // 3️⃣ Snapshot referee institution if missing (freeze for consistency)
+    if (!letter.referee_institution && referee.institution) {
+      await letter.update({ referee_institution: referee.institution });
+    }
+ 
+    // 4️⃣ Manage regeneration type
     let regenerationSettings = { ...letter.generation_parameters };
     let newModel = letter.selected_model;
     let newContext = letter.generation_parameters?.extra_context || {};
-
+ 
     if (type === 'new_model') {
-      if (!selected_model) return res.status(400).json({ error: 'selected_model is required' });
+      if (!selected_model)
+        return res.status(400).json({ error: 'selected_model is required for type=new_model' });
       newModel = selected_model;
     } else if (type === 'new_context') {
-      if (!extra_context) return res.status(400).json({ error: 'extra_context is required' });
+      if (!extra_context)
+        return res.status(400).json({ error: 'extra_context is required for type=new_context' });
       newContext = extra_context;
+    } else if (type !== 'same_settings') {
+      return res.status(400).json({ error: 'Invalid regeneration type' });
     }
-
-    // Build prompt
-    const applicantName = `${letter.applicant_data.firstName} ${letter.applicant_data.lastName}`;
+ 
+    // 5️⃣ Build applicant/referee values
+    const applicantData = letter.applicant_data;
+    const applicantName = `${applicantData.firstName} ${applicantData.lastName}`;
+ 
     const values = {
       applicantName,
-      position: letter.applicant_data.goal || letter.applicant_data.program,
+      position: applicantData.goal || applicantData.program,
       relationship: newContext.relationship || 'student',
       duration: newContext.duration || '1 year',
-      strengths: newContext.strengths || letter.applicant_data.achievements?.join(', ') || 'dedication and curiosity',
+      strengths:
+        newContext.strengths ||
+        applicantData.achievements?.join(', ') ||
+        'dedication and curiosity',
       examples: newContext.specific_examples || '',
       additionalContext: newContext.additional_context || '',
       tone: regenerationSettings?.tone || 'formal',
@@ -1615,28 +1629,61 @@ router.post('/:id/regenerate', auth, roleAuth('referee'), async (req, res) => {
       detailLevel: regenerationSettings?.detailLevel || 'comprehensive',
       refereeName: referee.fullname || `${referee.firstName} ${referee.lastName}`,
       refereeEmail: referee.email || '',
-      refereeInstitution: referee.institution || 'our institution',
+      refereeInstitution:
+        letter.referee_institution || referee.institution || 'our institution',
       refereeDepartment: referee.department || 'the department',
       refereeTitle: referee.title || 'Professor',
       refereeCity: referee.city || '',
-      refereeState: referee.state || '',
+      refereeState: referee.state || ''
     };
-
-    const prompt = fillTemplate(template.promptTemplate, values);
-
-    // Generate
+ 
+    // 6️⃣ Strict factual prompt builder
+    const buildPrompt = (template, values, applicantData, extraContext) => {
+      const filledTemplate = fillTemplate(template.promptTemplate, values);
+      return `${filledTemplate}
+ 
+FACTUAL INSTRUCTIONS (STRICT):
+- Use ONLY the information provided below.
+- Do NOT invent projects, modify achievements, or change durations.
+- Maintain an academic and professional tone (e.g., “academic growth”, “proficient speaker”, “thirst for knowledge”, “valuable addition”).
+- Keep facts consistent with applicant data and referee context.
+ 
+DATA PROVIDED:
+Applicant: ${applicantData.firstName} ${applicantData.lastName}
+Program/Goal: ${applicantData.goal || applicantData.program}
+Achievements: ${applicantData.achievements?.join(', ') || 'None'}
+Relationship: ${extraContext.relationship || 'student'}
+Duration: ${extraContext.duration || '1 year'}
+Strengths: ${extraContext.strengths || ''}
+Examples: ${extraContext.specific_examples || ''}
+Additional Context: ${extraContext.additional_context || ''}
+ 
+Referee Institution: ${values.refereeInstitution}
+Referee Department: ${values.refereeDepartment}
+Referee Title: ${values.refereeTitle}
+Referee Email: ${values.refereeEmail}
+`;
+    };
+ 
+    const prompt = buildPrompt(template, values, applicantData, newContext);
+ 
+    // 7️⃣ Generate with OpenRouter
     const generatedText = await generateWithOpenRouter(prompt, {
       model: newModel,
       maxTokens: 800,
       temperature: 0.7
     });
-
-    if (!generatedText?.content) return res.status(500).json({ error: 'No content generated from AI' });
-
+ 
+    if (!generatedText?.content)
+      return res.status(500).json({ error: 'No content generated from AI' });
+ 
+    // 8️⃣ Clean + format output
     const finalContent = formatCompleteLetter(generatedText.content, referee);
-
-    // Save if different
+ 
+    // 9️⃣ Version management
+    let history = Array.isArray(letter.letter_history) ? [...letter.letter_history] : [];
     const lastVersion = history[history.length - 1];
+ 
     if (shouldCreateNewVersion(lastVersion, finalContent, generatedText.model, newModel)) {
       const newVersionEntry = makeVersionEntry(
         history,
@@ -1652,7 +1699,7 @@ router.post('/:id/regenerate', auth, roleAuth('referee'), async (req, res) => {
         }
       );
       history.push(newVersionEntry);
-
+ 
       await letter.update({
         letter_content: finalContent,
         model_used: generatedText.model,
@@ -1662,7 +1709,7 @@ router.post('/:id/regenerate', auth, roleAuth('referee'), async (req, res) => {
         generation_attempts: (letter.generation_attempts || 0) + 1,
         generation_parameters: newVersionEntry.generation_parameters
       });
-
+ 
       return res.json({
         message: `Letter regenerated successfully using ${newModel} (Version ${newVersionEntry.version} created)`,
         letter: {
@@ -1672,20 +1719,27 @@ router.post('/:id/regenerate', auth, roleAuth('referee'), async (req, res) => {
           model_used: generatedText.model,
           selected_model: newModel,
           version: newVersionEntry.version,
-          applicant: { name: applicantName, program: letter.applicant_data.program },
+          applicant: {
+            name: applicantName,
+            program: applicantData.program
+          },
           regenerated_at: new Date(),
           tokens_used: generatedText.usage?.total_tokens,
           previous_versions_count: history.length - 1
         }
       });
     }
-
-    res.json({ message: `Regeneration produced no changes. Current version remains the same.` });
+ 
+    // 10️⃣ No change fallback
+    res.json({
+      message: 'Regeneration produced no changes. Current version remains the same.'
+    });
   } catch (err) {
     console.error('Error regenerating letter:', err);
     res.status(500).json({ error: 'Failed to regenerate letter' });
   }
 });
+
 
 /**
  * @swagger
