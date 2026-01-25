@@ -240,7 +240,6 @@ export const ApplicantDashboard: React.FC<ApplicantDashboardProps> = ({ onNaviga
 
                 {recentLetters.length === 0 ? (
                   <div className="text-center py-8">
-                    <div className="text-gray-400 text-4xl mb-2">📭</div>
                     <p className="text-gray-500">No letters requested yet</p>
                     <p className="text-gray-400 text-sm mt-1">
                       Request your first recommendation letter to get started
@@ -271,11 +270,11 @@ export const ApplicantDashboard: React.FC<ApplicantDashboardProps> = ({ onNaviga
                             <p className="text-sm text-gray-500">
                               {letter.referee?.institution || letter.applicant.program}
                             </p>
-                            {letter.generation_parameters?.deadline && (
+                            {/* {letter.generation_parameters?.deadline && (
                               <p className="text-xs text-gray-400">
                                 Deadline: {new Date(letter.generation_parameters.deadline).toLocaleDateString()}
                               </p>
-                            )}
+                            )} */}
                           </div>
                         </div>
 
@@ -320,28 +319,17 @@ export const ApplicantDashboard: React.FC<ApplicantDashboardProps> = ({ onNaviga
                     onClick={() => handleQuickAction('new_letter')}
                     className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors text-left"
                   >
-                    📝 Request New Letter
+                    Request New Letter
                   </button>
                   <button
                     onClick={() => handleQuickAction('view-letters')}
                     className="w-full bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 transition-colors text-left"
                   >
-                    📋 View All Letters
+                    View All Letters
                   </button>
                 </div>
               </div>
 
-
-              {/* Tips for Applicants */}
-              {/* <div className="bg-blue-50 rounded-lg p-6">
-                <h3 className="text-sm font-semibold text-blue-900 mb-3">💡 Tips for Success</h3>
-                <ul className="text-sm text-blue-800 space-y-2">
-                  <li>• Give referees at least 2-3 weeks notice</li>
-                  <li>• Provide detailed information about your goals</li>
-                  <li>• Follow up politely if needed</li>
-                  <li>• Send a thank you note after completion</li>
-                </ul>
-              </div> */}
             </div>
           </div>
         </div>

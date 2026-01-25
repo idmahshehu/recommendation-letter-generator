@@ -298,14 +298,10 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
 
                 {recentLetters.length === 0 ? (
                   <div className="text-center py-8">
-                    <div className="text-gray-400 text-4xl mb-2">📭</div>
+                    <div className="text-gray-400 text-4xl mb-2"></div>
+
                     <p className="text-gray-500">No letters yet</p>
-                    <button
-                      onClick={() => handleQuickAction('new_letter')}
-                      className="mt-2 text-blue-600 hover:text-blue-800 text-sm font-medium"
-                    >
-                      Request your first letter
-                    </button>
+                    
                   </div>
                 ) : (
                   <div className="space-y-3">

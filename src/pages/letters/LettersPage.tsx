@@ -460,9 +460,9 @@ export const LettersPage: React.FC = () => {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Status
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    {/* <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Deadline
-                    </th>
+                    </th> */}
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Requested
                     </th>
@@ -479,7 +479,7 @@ export const LettersPage: React.FC = () => {
                           {letter.applicant.name}
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-6 py-4">
                         <div className="text-sm text-gray-500">
                           {letter.applicant.program}
                         </div>
@@ -489,12 +489,12 @@ export const LettersPage: React.FC = () => {
                           {getStatusLabel(letter.status)}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {/* <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         {letter.generation_parameters?.deadline
                           ? new Date(letter.generation_parameters.deadline).toLocaleDateString()
                           : 'No deadline'
                         }
-                      </td>
+                      </td> */}
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         {parseDate(letter.created_at)}
                       </td>

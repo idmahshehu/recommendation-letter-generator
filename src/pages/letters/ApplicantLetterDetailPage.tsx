@@ -186,7 +186,7 @@ const ApplicantLetterDetailPage: React.FC = () => {
           <h2 className="text-xl font-semibold text-gray-900 mb-4">Letter Overview</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm text-gray-700">
             <div>
-              <p className="font-medium">Referee:</p>
+              <p className="font-medium text-gray-600">Referee:</p>
               <p className="text-gray-600">
                 {letter.referee?.firstName} {letter.referee?.lastName}
                 {letter.referee?.title ? `, ${letter.referee.title}` : ''}
@@ -194,25 +194,25 @@ const ApplicantLetterDetailPage: React.FC = () => {
             </div>
             {letter.referee?.institution && (
               <div>
-                <p className="font-medium">Institution:</p>
+                <p className="font-medium text-gray-600">Institution:</p>
                 <p className="text-gray-600">{letter.referee.institution}</p>
               </div>
             )}
             <div>
-              <p className="font-medium">Status:</p>
+              <p className="font-medium text-gray-600">Status:</p>
               <p className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(letter.status)}`}>
                 {letter.status.charAt(0).toUpperCase() + letter.status.slice(1)}
               </p>
             </div>
             {letter.created_at && (
               <div>
-                <p className="font-medium">Requested On:</p>
+                <p className="font-medium text-gray-600">Requested On:</p>
                 <p className="text-gray-600">{formatDate(letter.created_at)}</p>
               </div>
             )}
             {letter.updated_at && (
               <div>
-                <p className="font-medium">Last Updated:</p>
+                <p className="font-medium text-gray-600">Last Updated:</p>
                 <p className="text-gray-600">{formatDate(letter.updated_at)}</p>
               </div>
             )}

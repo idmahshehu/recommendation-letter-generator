@@ -14,10 +14,8 @@ const generateTemplateFromAnalysis = (analysis, templateName) => {
 
 Follow this structure and style:
 
-Header:
-${introduction_pattern}
-
 Introduction:
+${introduction_pattern}
 Establish your relationship: ${relationship_description}
 State how long you have known {applicantName} and in what capacity: {relationship}
 
@@ -25,29 +23,6 @@ Main Content:
 - Include key {strengths}
 - Use {examples} (research, projects, or academic activities) where available
 - Add {additionalContext} if provided`;
-
-// ${structure.length > 0 ? structure.map(s => `- ${s}: highlight {strengths}, include {examples}`).join("\n") 
-// : "- Highlight {strengths}, with {examples}."}`;
-
-  // Add structure-based sections if available
-// if (structure && structure.length > 0) {
-//   structure.forEach((section, index) => {
-//     promptTemplate += `
-
-// Section ${index + 1} - ${section}:
-// - Highlight {strengths}
-// - Provide specific examples: {examples}
-// - Relate this to their suitability for {position}`;
-//   });
-// }
-//   else {
-//     // Default structure if none provided
-//     promptTemplate += `
-// - Describe {applicantName}'s key strengths and performance: {strengths}
-// - Provide specific examples of their work/achievements: {examples}
-// - Explain their suitability for {position}`;
-//   }
-
   promptTemplate += `
 
 Conclusion:

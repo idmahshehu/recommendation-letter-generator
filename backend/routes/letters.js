@@ -1181,21 +1181,24 @@ router.post('/:id/approve', auth, roleAuth('referee'), async (req, res) => {
       return res.status(404).json({ error: 'Letter not found or cannot be approved' });
     }
 
-    // const referee = await User.findByPk(req.user.id);
+    const referee = await User.findByPk(req.user.id);
+
+    const finalContent = formatCompleteLetter(letter.letter_content, referee);
 
     await letter.update({
+      letter_content: finalContent,
       status: 'completed',
       include_signature: include_signature || false,
       completed_at: new Date()
     });
 
     res.json({
-      message: 'Letter approved and marked as completed.',
+      message: 'Letter approved and completed',
       letter: {
         id: letter.id,
         status: letter.status,
         include_signature: letter.include_signature,
-        completed_at: letter.updated_at
+        completed_at: letter.completed_at
       }
     });
   } catch (err) {
@@ -1563,7 +1566,7 @@ router.post('/:id/regenerate', auth, roleAuth('referee'), async (req, res) => {
   try {
     const { type, selected_model, extra_context = {} } = req.body;
  
-    // 1️⃣ Find the letter
+    // Find the letter
     const letter = await Letter.findOne({
       where: {
         id: req.params.id,
@@ -1576,7 +1579,7 @@ router.post('/:id/regenerate', auth, roleAuth('referee'), async (req, res) => {
       return res.status(404).json({ error: 'Letter not found or cannot be regenerated' });
     }
  
-    // 2️⃣ Prepare template + referee info
+    // Prepare template + referee info
     const template = await Template.findByPk(letter.template_id);
     if (!template) return res.status(404).json({ error: 'Template not found' });
  
@@ -1587,12 +1590,12 @@ router.post('/:id/regenerate', auth, roleAuth('referee'), async (req, res) => {
       ]
     });
  
-    // 3️⃣ Snapshot referee institution if missing (freeze for consistency)
+    // Snapshot referee institution if missing (freeze for consistency)
     if (!letter.referee_institution && referee.institution) {
       await letter.update({ referee_institution: referee.institution });
     }
  
-    // 4️⃣ Manage regeneration type
+    // Manage regeneration type
     let regenerationSettings = { ...letter.generation_parameters };
     let newModel = letter.selected_model;
     let newContext = letter.generation_parameters?.extra_context || {};
@@ -1609,7 +1612,7 @@ router.post('/:id/regenerate', auth, roleAuth('referee'), async (req, res) => {
       return res.status(400).json({ error: 'Invalid regeneration type' });
     }
  
-    // 5️⃣ Build applicant/referee values
+    // Build applicant/referee values
     const applicantData = letter.applicant_data;
     const applicantName = `${applicantData.firstName} ${applicantData.lastName}`;
  
@@ -1637,7 +1640,7 @@ router.post('/:id/regenerate', auth, roleAuth('referee'), async (req, res) => {
       refereeState: referee.state || ''
     };
  
-    // 6️⃣ Strict factual prompt builder
+    // Strict factual prompt builder
     const buildPrompt = (template, values, applicantData, extraContext) => {
       const filledTemplate = fillTemplate(template.promptTemplate, values);
       return `${filledTemplate}
@@ -1667,7 +1670,7 @@ Referee Email: ${values.refereeEmail}
  
     const prompt = buildPrompt(template, values, applicantData, newContext);
  
-    // 7️⃣ Generate with OpenRouter
+    // Generate with OpenRouter
     const generatedText = await generateWithOpenRouter(prompt, {
       model: newModel,
       maxTokens: 800,
@@ -1677,10 +1680,10 @@ Referee Email: ${values.refereeEmail}
     if (!generatedText?.content)
       return res.status(500).json({ error: 'No content generated from AI' });
  
-    // 8️⃣ Clean + format output
+    // Clean + format output
     const finalContent = formatCompleteLetter(generatedText.content, referee);
  
-    // 9️⃣ Version management
+    // Version management
     let history = Array.isArray(letter.letter_history) ? [...letter.letter_history] : [];
     const lastVersion = history[history.length - 1];
  
@@ -1730,7 +1733,7 @@ Referee Email: ${values.refereeEmail}
       });
     }
  
-    // 10️⃣ No change fallback
+    // No change fallback
     res.json({
       message: 'Regeneration produced no changes. Current version remains the same.'
     });

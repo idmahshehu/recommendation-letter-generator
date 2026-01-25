@@ -4,7 +4,6 @@ import { useAuth } from "../../context/AuthContext";
 import { api } from "../../services/api";
 import { Navigation } from "../../components/layout/Navigation";
 
-/** Backend can return extra statuses; we'll normalize them for display. */
 type RawStatus = "requested" | "in_progress" | "completed" | "rejected" | "draft" | "in_review" | "canceled";
 type DisplayStatus = "requested" | "in_progress" | "completed" | "rejected" | "canceled";
 
@@ -57,9 +56,7 @@ const statusLabel = (s: DisplayStatus | "all") =>
             s === "completed" ? "Completed" :
                 s === "rejected" ? "Declined" : s;
 
-/** Normalize backend statuses for display:
- * - map 'draft' and 'in_review' -> 'in_progress' so drafts are visible as Accepted
- */
+
 const toDisplayStatus = (raw: RawStatus): DisplayStatus | null => {
     if (raw === "draft" || raw === "in_review") return "in_progress";
     if (raw === "requested" || raw === "in_progress" || raw === "completed" || raw === "rejected") return raw;
@@ -118,7 +115,6 @@ export default function ApplicantLetters() {
             .filter((x): x is (Letter & { displayStatus: DisplayStatus }) => x !== null);
     }, [letters]);
 
-    /** Derived counts for tabs */
     const counts: Record<"all" | DisplayStatus, number> = useMemo(() => ({
         all: totalCount,
         requested: normalized.filter(l => l.displayStatus === "requested").length,
@@ -143,7 +139,6 @@ export default function ApplicantLetters() {
         return out;
     }, [normalized, selectedStatus, search]);
 
-    /** Applicant action: withdraw only when 'requested' */
     const withdraw = async (id: string) => {
         if (!window.confirm("Withdraw this request?")) return;
         try {
@@ -154,7 +149,6 @@ export default function ApplicantLetters() {
         }
     };
 
-    /** Single action renderer: open Preview for all statuses; Withdraw for requested */
     const actionCell = (l: Letter & { displayStatus: DisplayStatus }) => {
         if (l.displayStatus === "requested") {
             return (
@@ -253,7 +247,6 @@ export default function ApplicantLetters() {
                 <div className="bg-white rounded-lg shadow">
                     {filtered.length === 0 ? (
                         <div className="text-center py-12">
-                            <div className="text-gray-400 text-4xl mb-4">📋</div>
                             <h3 className="text-lg font-medium text-gray-900 mb-2">No letters found</h3>
                             <p className="text-gray-500">Try another filter or create a new request.</p>
                         </div>
@@ -265,7 +258,7 @@ export default function ApplicantLetters() {
                                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Program</th>
                                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Referee</th>
                                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Deadline</th>
+                                        {/* <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Deadline</th> */}
                                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Requested</th>
                                         <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                                     </tr>
@@ -273,27 +266,27 @@ export default function ApplicantLetters() {
                                 <tbody className="bg-white divide-y divide-gray-200">
                                     {filtered.map(l => (
                                         <tr key={l.id} className="hover:bg-gray-50">
-                                            <td className="px-6 py-4 whitespace-nowrap">
+                                            <td className="px-6 py-4">
                                                 <div className="text-sm font-medium text-gray-900">{l.applicant.program}</div>
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap">
                                                 <div className="text-sm text-gray-700">{l.referee?.name || "—"}</div>
                                                 {l.referee?.institution && <div className="text-xs text-gray-500">{l.referee.institution}</div>}
                                             </td>
-                                            <td className="px-6 py-4 whitespace-nowrap">
+                                            <td className="px-6 py-4">
                                                 <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${statusBadge(l.displayStatus)}`}>
                                                     {statusLabel(l.displayStatus)}
                                                 </span>
                                             </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                            {/* <td className="px-6 py-4 text-sm text-gray-500">
                                                 {l.generation_parameters?.deadline
                                                     ? new Date(l.generation_parameters.deadline).toLocaleDateString()
                                                     : "No deadline"}
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                            </td> */}
+                                            <td className="px-6 py-4 text-sm text-gray-500">
                                                 {parseDate(l.created_at)}
                                             </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                            <td className="px-6 py-4 text-right text-sm font-medium">
                                                 {actionCell(l)}
                                             </td>
                                         </tr>
@@ -337,12 +330,12 @@ export default function ApplicantLetters() {
                                 </div>
                                 <div><span className="font-medium">Goal:</span> {preview.applicant.goal}</div>
                                 <div><span className="font-medium">Achievements:</span> {preview.applicant.achievements}</div>
-                                <div>
+                                {/* <div>
                                     <span className="font-medium">Deadline:</span>{" "}
                                     {preview.generation_parameters?.deadline
                                         ? new Date(preview.generation_parameters.deadline).toLocaleDateString()
                                         : "No deadline"}
-                                </div>
+                                </div> */}
                                 <div><span className="font-medium">Requested:</span> {parseDate(preview.created_at)}</div>
                                 {preview.completed_at && (
                                     <div><span className="font-medium">Completed:</span> {parseDate(preview.completed_at)}</div>

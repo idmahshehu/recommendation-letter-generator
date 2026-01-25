@@ -282,8 +282,9 @@ export default function TemplatesPage() {
                                             {/* Only show edit/delete for user's own templates */}
                                             {!t.isSystemTemplate && (
                                                 <>
-                                                    <button className="px-3 py-2 rounded-lg border text-sm text-blue-600 hover:text-blue-700">
-                                                        Edit
+                                                    <button onClick={() => navigate(`/templates/edit/${t.id}`)}
+                                                        className="px-3 py-2 rounded-lg border text-sm text-blue-600 hover:text-blue-700">
+                                                    Edit
                                                     </button>
                                                     <button
                                                         onClick={() => handleDelete(t.id)}

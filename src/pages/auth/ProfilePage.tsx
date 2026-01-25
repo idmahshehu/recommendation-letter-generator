@@ -226,7 +226,7 @@ const ProfilePage: React.FC = () => {
                     onChange={handleChange}
                     required
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Associate Professor of Computer Science"
+                    placeholder="Professor of Computer Science"
                   />
                 </div>
 
@@ -242,7 +242,7 @@ const ProfilePage: React.FC = () => {
                     onChange={handleChange}
                     required
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Massachusetts Institute of Technology"
+                    placeholder="University of York"
                   />
                 </div>
 
@@ -275,7 +275,7 @@ const ProfilePage: React.FC = () => {
                       onChange={handleChange}
                       required
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="Cambridge"
+                      placeholder="York"
                     />
                   </div>
                   <div>
@@ -289,7 +289,7 @@ const ProfilePage: React.FC = () => {
                       onChange={handleChange}
                       required
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="MA"
+                      placeholder="England"
                     />
                   </div>
                 </div>

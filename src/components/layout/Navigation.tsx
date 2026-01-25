@@ -71,7 +71,7 @@ export const Navigation: React.FC<NavigationProps> = ({ user }) => {
             {user && (
               <div className="flex items-center space-x-2">
                 <span
-                  className={`text-white px-3 py-1 rounded-full text-xs font-semibold ${
+                  className={`text-gray-600 px-3 py-1 rounded-full text-xs font-semibold ${
                     user.role === "applicant"
                       ? "role-badge-applicant"
                       : "role-badge-referee"

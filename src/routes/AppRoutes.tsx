@@ -17,6 +17,7 @@ import ApplicantLetters from '../pages/letters/ApplicantLetters';
 import ProfilePage from '../pages/auth/ProfilePage';
 import ApplicantLetterDetailPage from '../pages/letters/ApplicantLetterDetailPage';
 import RoleBasedRedirect from './RoleBasedRedirect';
+import TemplateEdit from '../pages/templates/TemplateEdit';
 
 function AppRoutes() {
   return (
@@ -91,6 +92,15 @@ function AppRoutes() {
         element={
           <ProtectedRoute allowedRoles={['referee']}>
             <LetterAnalyzer />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/templates/edit/:id"
+        element={
+          <ProtectedRoute allowedRoles={['referee']}>
+            <TemplateEdit />
           </ProtectedRoute>
         }
       />

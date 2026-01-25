@@ -9,33 +9,33 @@ const AVAILABLE_MODELS = {
     strengths: 'Superior coherence, follows complex instructions, maintains formal tone',
     cost: 'Moderate'
   },
-  'claude-3.5-sonnet': {
-    name: 'Claude 3.5 Sonnet',
-    identifier: 'anthropic/claude-3.5-sonnet',
-    description: 'Nuanced and empathetic letters with strong narrative flow',
-    strengths: 'Excellent personalization, natural language, avoids generic phrasing',
-    cost: 'Premium'
+  'claude-4.5-opus': {
+    name: 'Claude 4.5 Opus',
+    identifier: 'anthropic/claude-opus-4.5',
+    description: 'Most natural and personalized letters with excellent narrative flow',
+    strengths: 'Superior personalization, avoids generic phrasing, warm professional tone',
+    cost: 'Medium-High'
   },
-  'mistral-large': {
-    name: 'Mistral Large',
-    identifier: 'mistralai/mistral-large',
-    description: 'Balanced quality and speed with multilingual support',
-    strengths: 'Strong reasoning, suitable for academic contexts, cost-effective',
-    cost: 'Moderate'
+  'gpt-4o': {
+    name: 'GPT-4o',
+    identifier: 'openai/gpt-4o',
+    description: 'Highest quality for critical letters (grad school, prestigious positions)',
+    strengths: 'Best reasoning, perfect structure, handles complex requirements',
+    cost: 'Medium'
   },
-  'llama-3.1-70b': {
-    name: 'Llama 3.1 70B',
-    identifier: 'meta-llama/llama-3.1-70b-instruct',
-    description: 'Free or low-cost option with decent letter quality',
-    strengths: 'Open-source, solid general performance, accessible for testing',
-    cost: 'Free to low cost'
+  'gemini-2.5-flash': {
+    name: 'Gemini 2.5 Flash',
+    identifier: 'google/gemini-2.5-flash',
+    description: 'Fast and affordable with good quality for standard letters',
+    strengths: 'Very fast, good factual accuracy, cost-effective',
+    cost: 'Very Low'
   },
-  'gemini-1.5-pro': {
-    name: 'Gemini 1.5 Pro',
-    identifier: 'google/gemini-pro-1.5',
-    description: 'Advanced reasoning and factual accuracy for formal recommendations',
-    strengths: 'Great at detailed structure, clarity, and long-form consistency',
-    cost: 'High'
+  'llama-3.3-70b': {
+    name: 'Llama 3.3 70B',
+    identifier: 'meta-llama/llama-3.3-70b-instruct',
+    description: 'Free/low-cost option for testing or high-volume use',
+    strengths: 'Open-source, competitive quality, great for development',
+    cost: 'Free/Very Low'
   }
 };
 
